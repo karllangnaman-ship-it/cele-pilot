@@ -8,7 +8,7 @@ CELE Pilot is a Vite + React study-planning app powered by Firebase Authenticati
 2. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
 3. Copy `.env.example` to `.env.local` and fill in your Firebase values and `GEMINI_API_KEY`.
 
-`GEMINI_API_KEY` and `GEMINI_MODEL` are server-side only. Do not prefix either with `VITE_`, commit the API key, or place either value in frontend code. Set `GEMINI_MODEL` explicitly before generating plans.
+`GEMINI_API_KEY` is server-side only. Do not prefix it with `VITE_`, commit it, or place it in frontend code. Plan generation uses an immediate Gemini failover chain: `gemini-3.5-flash`, `gemini-flash-latest`, `gemini-3.1-flash-lite`, then `gemini-2.0-flash`.
 
 ## Local development
 
@@ -44,11 +44,11 @@ To list every model available to the current `GEMINI_API_KEY` without generating
 /api/generatePlan?diagnostic=models
 ```
 
-The response contains each model's `name` and `supportedGenerationMethods`. Choose a model that includes `generateContent`, then set its name (without the `models/` prefix) as `GEMINI_MODEL`.
+The response contains each model's `name` and `supportedGenerationMethods`. It does not generate a plan.
 
 ## Vercel deployment
 
-In Vercel, add every `VITE_FIREBASE_*` variable for the appropriate environment, plus `GEMINI_API_KEY` and the selected `GEMINI_MODEL` as server-side environment variables. Do not expose either Gemini variable as a `VITE_` variable. Redeploy after changing environment variables.
+In Vercel, add every `VITE_FIREBASE_*` variable for the appropriate environment, plus `GEMINI_API_KEY` as a server-side environment variable. Do not expose it as a `VITE_` variable. Redeploy after changing environment variables.
 
 ## Build
 

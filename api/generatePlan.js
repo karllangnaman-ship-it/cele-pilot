@@ -6,14 +6,18 @@ const normalizeModelName = (model) => typeof model === 'string'
   ? model.trim().replace(/^models\//, '')
   : '';
 
-const CONFIGURED_GEMINI_MODEL = normalizeModelName(process.env.GEMINI_MODEL);
-const GEMINI_MODEL_SOURCE = 'environment variable';
+const GEMINI_FAILOVER_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemini-3.1-flash-lite',
+  'gemini-2.0-flash',
+];
 
 const sendError = (res, status, error, provider) => res.status(status).json({
   success: false,
   status,
   ...(provider ? { provider } : {}),
-  model: CONFIGURED_GEMINI_MODEL || null,
+  model: GEMINI_FAILOVER_MODELS[0],
   error,
 });
 
@@ -71,7 +75,7 @@ const listAvailableModels = async (apiKey, signal) => {
         status: response.status,
         body: responseText,
       });
-      throw new GeminiApiError(response.status || 502, responseText, CONFIGURED_GEMINI_MODEL);
+      throw new GeminiApiError(response.status || 502, responseText, GEMINI_FAILOVER_MODELS[0]);
     }
 
     console.info('[generatePlan] Gemini model discovery response.', {
@@ -79,7 +83,7 @@ const listAvailableModels = async (apiKey, signal) => {
       body: toLogJson(responseBody),
     });
     if (!response.ok) {
-      throw new GeminiApiError(response.status, getProviderError(responseBody), CONFIGURED_GEMINI_MODEL);
+      throw new GeminiApiError(response.status, getProviderError(responseBody), GEMINI_FAILOVER_MODELS[0]);
     }
 
     if (Array.isArray(responseBody.models)) models.push(...responseBody.models);
@@ -170,7 +174,7 @@ const providerError = (res, status, error, model) => res.status(status).json({
   success: false,
   status,
   provider: 'Gemini',
-  model: normalizeModelName(model) || CONFIGURED_GEMINI_MODEL || null,
+  model: normalizeModelName(model) || GEMINI_FAILOVER_MODELS[0],
   error,
 });
 
@@ -197,12 +201,11 @@ export default async function handler(req, res) {
   console.info('[generatePlan] Gemini configuration.', {
     apiKeyConfigured: Boolean(apiKey),
     modelsEndpoint: GEMINI_MODELS_URL,
-    configuredModel: CONFIGURED_GEMINI_MODEL || null,
-    modelSource: GEMINI_MODEL_SOURCE,
+    failoverModels: GEMINI_FAILOVER_MODELS,
   });
   if (!apiKey) {
     console.error('[generatePlan] GEMINI_API_KEY is not configured.');
-    return providerError(res, 500, 'GEMINI_API_KEY is not configured.', CONFIGURED_GEMINI_MODEL);
+    return providerError(res, 500, 'GEMINI_API_KEY is not configured.');
   }
 
   const controller = new AbortController();
@@ -214,70 +217,57 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         provider: 'Gemini',
-        model: CONFIGURED_GEMINI_MODEL || null,
+        model: GEMINI_FAILOVER_MODELS[0],
         models: summarizeModels(models),
       });
     }
 
-    if (!CONFIGURED_GEMINI_MODEL) {
-      console.error('[generatePlan] Startup configuration error: GEMINI_MODEL is not configured.');
-      return providerError(res, 500, 'GEMINI_MODEL is not configured. Set it before starting plan generation.');
-    }
-
-    const model = normalizeModelName(CONFIGURED_GEMINI_MODEL);
-    console.info('[generatePlan] Gemini model selected after normalization.', {
-      model,
-      source: GEMINI_MODEL_SOURCE,
-    });
-    const endpoint = getGenerateContentUrl(model);
-    console.info('[generatePlan] Gemini generateContent URL.', { endpoint, model, source: GEMINI_MODEL_SOURCE });
     const payload = buildGeminiRequest(req.body);
-    console.info('[generatePlan] Gemini request.', {
-      endpoint,
-      model,
-      modelSource: GEMINI_MODEL_SOURCE,
-      payload: toLogJson(payload),
-    });
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const responseText = await response.text();
-    let responseBody;
-    try {
-      responseBody = JSON.parse(responseText);
-    } catch {
-      console.error('[generatePlan] Gemini returned a non-JSON response.', {
-        status: response.status,
-        body: responseText,
+    for (const [index, model] of GEMINI_FAILOVER_MODELS.entries()) {
+      const attempt = index + 1;
+      const endpoint = getGenerateContentUrl(model);
+      console.info('[generatePlan] Gemini generateContent attempt.', { attempt, model, endpoint });
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
       });
-      return providerError(res, response.ok ? 502 : response.status, responseText, model);
-    }
+      const responseText = await response.text();
+      let responseBody;
+      try {
+        responseBody = JSON.parse(responseText);
+      } catch {
+        console.error('[generatePlan] Gemini returned a non-JSON response.', {
+          attempt,
+          model,
+          status: response.status,
+          body: responseText,
+        });
+        if ((response.status === 429 || response.status === 503) && index < GEMINI_FAILOVER_MODELS.length - 1) continue;
+        return providerError(res, response.ok ? 502 : response.status, responseText, model);
+      }
 
-    console.info('[generatePlan] Gemini response.', {
-      status: response.status,
-      body: toLogJson(responseBody),
-    });
-    if (!response.ok) {
-      // Preserve the provider's error object exactly as Gemini returned it.
-      const error = isPlainObject(responseBody) && Object.hasOwn(responseBody, 'error')
-        ? responseBody.error
-        : responseBody;
-      console.error('[generatePlan] Gemini error.', {
+      console.info('[generatePlan] Gemini response.', {
+        attempt,
+        model,
         status: response.status,
         body: toLogJson(responseBody),
       });
-      return providerError(res, response.status, error, model);
-    }
+      if (!response.ok) {
+        const error = getProviderError(responseBody);
+        console.error('[generatePlan] Gemini error.', { attempt, model, status: response.status, body: toLogJson(responseBody) });
+        if ((response.status === 429 || response.status === 503) && index < GEMINI_FAILOVER_MODELS.length - 1) continue;
+        return providerError(res, response.status, error, model);
+      }
 
-    try {
-      return res.status(200).json({ success: true, model, plan: parsePlan(responseBody) });
-    } catch (error) {
-      console.error('[generatePlan] Invalid Gemini plan response.', error);
-      if (error instanceof Error && error.stack) console.error(error.stack);
-      return providerError(res, 502, responseBody, model);
+      try {
+        return res.status(200).json({ success: true, provider: 'Gemini', model, plan: parsePlan(responseBody) });
+      } catch (error) {
+        console.error('[generatePlan] Invalid Gemini plan response.', error);
+        if (error instanceof Error && error.stack) console.error(error.stack);
+        return providerError(res, 502, responseBody, model);
+      }
     }
   } catch (error) {
     if (error instanceof GeminiApiError) {
