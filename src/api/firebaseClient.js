@@ -132,7 +132,7 @@ const parseJsonResponse = (text) => {
 const getCerebrasErrorMessage = async (response) => {
   try {
     const errorData = await response.json();
-    const message = errorData?.error?.message || 'Unable to reach Cerebras API';
+    const message = errorData?.error?.message || errorData?.error || 'Unable to reach Cerebras API';
     if (message.includes('quota') || message.includes('rate') || message.includes('429')) {
       return 'Cerebras is currently unavailable because the API quota has been exceeded. Please try again later or update the API key.';
     }
