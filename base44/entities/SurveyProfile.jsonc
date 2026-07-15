@@ -1,0 +1,147 @@
+{
+  "name": "SurveyProfile",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "nickname": {
+      "type": "string"
+    },
+    "age": {
+      "type": "number"
+    },
+    "wake_up_time": {
+      "type": "string"
+    },
+    "bed_time": {
+      "type": "string"
+    },
+    "available_hours": {
+      "type": "number"
+    },
+    "break_duration": {
+      "type": "number"
+    },
+    "meal_schedule": {
+      "type": "string"
+    },
+    "learning_style": {
+      "type": "string",
+      "enum": [
+        "visual",
+        "reading_writing",
+        "auditory",
+        "kinesthetic"
+      ]
+    },
+    "study_preference": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "afternoon",
+        "evening",
+        "night"
+      ]
+    },
+    "mste_confidence": {
+      "type": "number"
+    },
+    "hge_confidence": {
+      "type": "number"
+    },
+    "psad_confidence": {
+      "type": "number"
+    },
+    "weak_topics_mste": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "weak_topics_hge": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "weak_topics_psad": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "strong_topics_mste": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "strong_topics_hge": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "strong_topics_psad": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "target_score": {
+      "type": "number"
+    },
+    "review_intensity": {
+      "type": "string",
+      "enum": [
+        "light",
+        "moderate",
+        "intensive"
+      ]
+    },
+    "focus_ability": {
+      "type": "string",
+      "enum": [
+        "easily_distracted",
+        "average",
+        "highly_focused"
+      ]
+    },
+    "session_duration": {
+      "type": "number"
+    },
+    "review_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "exam_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "completed": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "user_id"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "data.user_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}
