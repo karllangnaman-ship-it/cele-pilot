@@ -171,12 +171,13 @@ export default async function handler(req, res) {
     body: toLogJson(redactSecrets(req.body)),
   });
 
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return sendError(res, 405, 'Only POST requests are supported.');
+  const diagnosticRequest = isModelsDiagnosticRequest(req);
+  const isDiagnosticGet = req.method === 'GET' && diagnosticRequest;
+  if (req.method !== 'POST' && !isDiagnosticGet) {
+    res.setHeader('Allow', 'POST, GET');
+    return sendError(res, 405, 'Only POST requests are supported, except GET ?diagnostic=models.');
   }
 
-  const diagnosticRequest = isModelsDiagnosticRequest(req);
   if (!diagnosticRequest) {
     const validationError = validateRequest(req.body);
     if (validationError) return sendError(res, 400, validationError);
