@@ -7,6 +7,7 @@ const normalizeModelName = (model) => typeof model === 'string'
   : '';
 
 const CONFIGURED_GEMINI_MODEL = normalizeModelName(process.env.GEMINI_MODEL);
+const GEMINI_MODEL_SOURCE = 'environment variable';
 
 const sendError = (res, status, error, provider) => res.status(status).json({
   success: false,
@@ -197,6 +198,7 @@ export default async function handler(req, res) {
     apiKeyConfigured: Boolean(apiKey),
     modelsEndpoint: GEMINI_MODELS_URL,
     configuredModel: CONFIGURED_GEMINI_MODEL || null,
+    modelSource: GEMINI_MODEL_SOURCE,
   });
   if (!apiKey) {
     console.error('[generatePlan] GEMINI_API_KEY is not configured.');
@@ -218,17 +220,22 @@ export default async function handler(req, res) {
     }
 
     if (!CONFIGURED_GEMINI_MODEL) {
-      return providerError(res, 500, 'GEMINI_MODEL is not configured. Run the models diagnostic request and configure one available model.');
+      console.error('[generatePlan] Startup configuration error: GEMINI_MODEL is not configured.');
+      return providerError(res, 500, 'GEMINI_MODEL is not configured. Set it before starting plan generation.');
     }
 
     const model = normalizeModelName(CONFIGURED_GEMINI_MODEL);
-    console.info('[generatePlan] Gemini model selected after normalization.', { model });
+    console.info('[generatePlan] Gemini model selected after normalization.', {
+      model,
+      source: GEMINI_MODEL_SOURCE,
+    });
     const endpoint = getGenerateContentUrl(model);
-    console.info('[generatePlan] Gemini generateContent URL.', { endpoint });
+    console.info('[generatePlan] Gemini generateContent URL.', { endpoint, model, source: GEMINI_MODEL_SOURCE });
     const payload = buildGeminiRequest(req.body);
     console.info('[generatePlan] Gemini request.', {
       endpoint,
       model,
+      modelSource: GEMINI_MODEL_SOURCE,
       payload: toLogJson(payload),
     });
     const response = await fetch(endpoint, {
