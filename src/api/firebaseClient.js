@@ -139,7 +139,6 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema }) =>
   const userPrompt = file_urls.length > 0 ? `${prompt}\n\nAdditional file references:\n${file_urls.join('\n')}` : prompt;
 
   const payload = {
-    model: 'gemini-2.5-flash',
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },

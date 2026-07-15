@@ -8,7 +8,7 @@ CELE Pilot is a Vite + React study-planning app powered by Firebase Authenticati
 2. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
 3. Copy `.env.example` to `.env.local` and fill in your Firebase values and `GEMINI_API_KEY`.
 
-`GEMINI_API_KEY` is server-side only. Do not prefix it with `VITE_`, commit it, or place it in frontend code.
+`GEMINI_API_KEY` and `GEMINI_MODEL` are server-side only. Do not prefix either with `VITE_`, commit the API key, or place either value in frontend code. `GEMINI_MODEL` defaults to `gemini-2.5-flash-lite` when it is not configured.
 
 ## Local development
 
@@ -38,7 +38,7 @@ or:
 
 ## Vercel deployment
 
-In Vercel, add every `VITE_FIREBASE_*` variable for the appropriate environment and add `GEMINI_API_KEY` as a server-side environment variable. Do not expose it as a `VITE_` variable. Redeploy after changing environment variables.
+In Vercel, add every `VITE_FIREBASE_*` variable for the appropriate environment and add `GEMINI_API_KEY` as a server-side environment variable. Optionally add `GEMINI_MODEL` to override the default `gemini-2.5-flash-lite`. Do not expose either Gemini variable as a `VITE_` variable. Redeploy after changing environment variables.
 
 ## Build
 

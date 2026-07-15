@@ -1,4 +1,4 @@
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash-lite';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const REQUEST_TIMEOUT_MS = 25_000;
 
@@ -91,7 +91,13 @@ const parsePlan = (body) => {
   return plan;
 };
 
-const providerError = (res, status, error) => sendError(res, status, error, 'Gemini');
+const providerError = (res, status, error) => res.status(status).json({
+  success: false,
+  status,
+  provider: 'Gemini',
+  model: GEMINI_MODEL,
+  error,
+});
 
 export default async function handler(req, res) {
   const startedAt = Date.now();
