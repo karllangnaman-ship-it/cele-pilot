@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/firebase';
+import { auth, firebaseInitializationError } from '@/firebase';
 
 const AuthContext = createContext();
 
@@ -15,6 +15,14 @@ export const AuthProvider = ({ children }) => {
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
 
   useEffect(() => {
+    if (firebaseInitializationError) {
+      setAuthError({ type: 'firebase_configuration', message: firebaseInitializationError });
+      setIsLoadingPublicSettings(false);
+      setIsLoadingAuth(false);
+      setAuthChecked(true);
+      return undefined;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       try {
         setIsLoadingPublicSettings(false);

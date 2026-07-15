@@ -10,6 +10,18 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { AchievementProvider } from '@/components/AchievementProvider';
 
+const FirebaseConfigurationError = ({ message }) => (
+  <main className="min-h-screen flex items-center justify-center bg-background p-4">
+    <section className="w-full max-w-lg rounded-2xl border border-destructive/30 bg-card p-8 shadow-lg">
+      <h1 className="text-xl font-bold text-foreground">Firebase configuration required</h1>
+      <p className="mt-3 text-sm text-muted-foreground">
+        This deployment is missing its VITE_FIREBASE_* environment variables. Add them in Vercel, then redeploy.
+      </p>
+      <p className="mt-4 break-words text-xs text-destructive">{message}</p>
+    </section>
+  </main>
+);
+
 // Auth pages
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
@@ -44,6 +56,9 @@ const AuthenticatedApp = () => {
   }
 
   if (authError) {
+    if (authError.type === 'firebase_configuration') {
+      return <FirebaseConfigurationError message={authError.message} />;
+    }
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
