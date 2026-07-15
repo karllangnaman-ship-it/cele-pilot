@@ -1,6 +1,19 @@
 const jsonError = (res, status, code, message) =>
   res.status(status).json({ error: { code, message } });
 
+const CEREBRAS_CHAT_COMPLETIONS_URL = 'https://api.cerebras.ai/v1/chat/completions';
+
+const getUpstreamErrorMessage = (body) => {
+  if (typeof body?.error === 'string') {
+    return body.error;
+  }
+
+  return body?.error?.message || body?.message || 'The plan-generation service rejected the request.';
+};
+
+const isModelNotFoundError = (status, message) =>
+  status === 404 && /(?:unsupported|invalid|unknown|not found|does not exist).{0,80}model|model.{0,80}(?:unsupported|invalid|unknown|not found|does not exist)/i.test(message);
+
 const isValidRequest = (body) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return 'Request body must be a JSON object.';
@@ -55,19 +68,27 @@ export default async function handler(req, res) {
     );
   }
 
-  console.info('[generatePlan] forwarding request to Cerebras.', {
-    model: req.body.model,
-    messageCount: req.body.messages.length,
-  });
+  const requestPayload = { ...req.body, stream: false };
+  const requestHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: 'Bearer [REDACTED]',
+  };
+
+  console.info('[generatePlan] Cerebras request.', JSON.stringify({
+    url: CEREBRAS_CHAT_COMPLETIONS_URL,
+    method: 'POST',
+    headers: requestHeaders,
+    payload: requestPayload,
+  }));
 
   try {
-    const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+    const response = await fetch(CEREBRAS_CHAT_COMPLETIONS_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ ...req.body, stream: false }),
+      body: JSON.stringify(requestPayload),
     });
 
     const responseText = await response.text();
@@ -75,13 +96,30 @@ export default async function handler(req, res) {
     try {
       responseBody = JSON.parse(responseText);
     } catch {
-      console.error('[generatePlan] Cerebras returned a non-JSON response.', { status: response.status });
+      console.error('[generatePlan] Cerebras returned a non-JSON response.', {
+        status: response.status,
+        body: responseText,
+      });
       return jsonError(res, 500, 'upstream_invalid_response', 'The plan-generation service returned an invalid response.');
     }
 
+    console.info('[generatePlan] Cerebras response.', JSON.stringify({
+      status: response.status,
+      body: responseBody,
+    }));
+
     if (!response.ok) {
-      const message = responseBody?.error?.message || 'The plan-generation service rejected the request.';
+      const message = getUpstreamErrorMessage(responseBody);
       console.error('[generatePlan] Cerebras request failed.', { status: response.status, message });
+
+      if (isModelNotFoundError(response.status, message)) {
+        return res.status(500).json({
+          success: false,
+          error: 'Unsupported model',
+          model: requestPayload.model,
+        });
+      }
+
       return jsonError(res, 500, 'upstream_request_failed', message);
     }
 
