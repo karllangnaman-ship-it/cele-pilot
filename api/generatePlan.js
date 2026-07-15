@@ -1,5 +1,6 @@
-const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash-lite';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_MODELS_URL = `${GEMINI_API_BASE_URL}/models`;
+const CONFIGURED_GEMINI_MODEL = process.env.GEMINI_MODEL?.trim().replace(/^models\//, '');
 const REQUEST_TIMEOUT_MS = 25_000;
 
 const sendError = (res, status, error, provider) => res.status(status).json({
@@ -28,6 +29,70 @@ const toLogJson = (value) => {
     return '[Unserializable value]';
   }
 };
+
+class GeminiApiError extends Error {
+  constructor(status, error, model) {
+    super(typeof error === 'string' ? error : error?.message || 'Gemini API request failed.');
+    this.name = 'GeminiApiError';
+    this.status = status;
+    this.providerError = error;
+    this.model = model;
+  }
+}
+
+const getProviderError = (body) => isPlainObject(body) && Object.hasOwn(body, 'error')
+  ? body.error
+  : body;
+
+const listAvailableModels = async (apiKey, signal) => {
+  const models = [];
+  let pageToken;
+
+  do {
+    const url = pageToken ? `${GEMINI_MODELS_URL}?pageToken=${encodeURIComponent(pageToken)}` : GEMINI_MODELS_URL;
+    console.info('[generatePlan] Gemini model discovery request.', { endpoint: url });
+    const response = await fetch(url, {
+      headers: { 'x-goog-api-key': apiKey },
+      signal,
+    });
+    const responseText = await response.text();
+    let responseBody;
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      console.error('[generatePlan] Gemini model discovery returned a non-JSON response.', {
+        status: response.status,
+        body: responseText,
+      });
+      throw new GeminiApiError(response.status || 502, responseText, CONFIGURED_GEMINI_MODEL);
+    }
+
+    console.info('[generatePlan] Gemini model discovery response.', {
+      status: response.status,
+      body: toLogJson(responseBody),
+    });
+    if (!response.ok) {
+      throw new GeminiApiError(response.status, getProviderError(responseBody), CONFIGURED_GEMINI_MODEL);
+    }
+
+    if (Array.isArray(responseBody.models)) models.push(...responseBody.models);
+    pageToken = responseBody.nextPageToken;
+  } while (pageToken);
+
+  return models;
+};
+
+const getGenerateContentUrl = (model) => `${GEMINI_API_BASE_URL}/models/${model}:generateContent`;
+
+const isModelsDiagnosticRequest = (req) => req.query?.diagnostic === 'models'
+  || req.body?.diagnostic === 'models';
+
+const summarizeModels = (models) => models.map((model) => ({
+  name: model.name,
+  supportedGenerationMethods: Array.isArray(model.supportedGenerationMethods)
+    ? model.supportedGenerationMethods
+    : [],
+}));
 
 const validateRequest = (body) => {
   if (!isPlainObject(body)) return 'Request body must be a JSON object.';
@@ -91,11 +156,11 @@ const parsePlan = (body) => {
   return plan;
 };
 
-const providerError = (res, status, error) => res.status(status).json({
+const providerError = (res, status, error, model) => res.status(status).json({
   success: false,
   status,
   provider: 'Gemini',
-  model: GEMINI_MODEL,
+  ...(model ? { model } : {}),
   error,
 });
 
@@ -111,31 +176,50 @@ export default async function handler(req, res) {
     return sendError(res, 405, 'Only POST requests are supported.');
   }
 
-  const validationError = validateRequest(req.body);
-  if (validationError) return sendError(res, 400, validationError);
+  const diagnosticRequest = isModelsDiagnosticRequest(req);
+  if (!diagnosticRequest) {
+    const validationError = validateRequest(req.body);
+    if (validationError) return sendError(res, 400, validationError);
+  }
 
   const apiKey = process.env.GEMINI_API_KEY;
   console.info('[generatePlan] Gemini configuration.', {
     apiKeyConfigured: Boolean(apiKey),
-    endpoint: GEMINI_URL,
-    model: GEMINI_MODEL,
+    modelsEndpoint: GEMINI_MODELS_URL,
+    configuredModel: CONFIGURED_GEMINI_MODEL || null,
   });
   if (!apiKey) {
     console.error('[generatePlan] GEMINI_API_KEY is not configured.');
-    return providerError(res, 500, 'GEMINI_API_KEY is not configured.');
+    return providerError(res, 500, 'GEMINI_API_KEY is not configured.', CONFIGURED_GEMINI_MODEL);
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    if (diagnosticRequest) {
+      const models = await listAvailableModels(apiKey, controller.signal);
+      return res.status(200).json({
+        success: true,
+        provider: 'Gemini',
+        models: summarizeModels(models),
+      });
+    }
+
+    if (!CONFIGURED_GEMINI_MODEL) {
+      return providerError(res, 500, 'GEMINI_MODEL is not configured. Run the models diagnostic request and configure one available model.');
+    }
+
+    const model = CONFIGURED_GEMINI_MODEL;
+    console.info('[generatePlan] Gemini model selected.', { model });
+    const endpoint = getGenerateContentUrl(model);
     const payload = buildGeminiRequest(req.body);
     console.info('[generatePlan] Gemini request.', {
-      endpoint: GEMINI_URL,
-      model: GEMINI_MODEL,
+      endpoint,
+      model,
       payload: toLogJson(payload),
     });
-    const response = await fetch(GEMINI_URL, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(payload),
@@ -150,7 +234,7 @@ export default async function handler(req, res) {
         status: response.status,
         body: responseText,
       });
-      return providerError(res, response.ok ? 502 : response.status, responseText);
+      return providerError(res, response.ok ? 502 : response.status, responseText, model);
     }
 
     console.info('[generatePlan] Gemini response.', {
@@ -166,7 +250,7 @@ export default async function handler(req, res) {
         status: response.status,
         body: toLogJson(responseBody),
       });
-      return providerError(res, response.status, error);
+      return providerError(res, response.status, error, model);
     }
 
     try {
@@ -174,9 +258,14 @@ export default async function handler(req, res) {
     } catch (error) {
       console.error('[generatePlan] Invalid Gemini plan response.', error);
       if (error instanceof Error && error.stack) console.error(error.stack);
-      return providerError(res, 502, responseBody);
+      return providerError(res, 502, responseBody, model);
     }
   } catch (error) {
+    if (error instanceof GeminiApiError) {
+      console.error('[generatePlan] Gemini Models API request failed.', error);
+      if (error.stack) console.error(error.stack);
+      return providerError(res, error.status, error.providerError, error.model);
+    }
     const timedOut = error?.name === 'AbortError';
     console.error('[generatePlan] Gemini request failed.', error);
     if (error instanceof Error && error.stack) console.error(error.stack);
