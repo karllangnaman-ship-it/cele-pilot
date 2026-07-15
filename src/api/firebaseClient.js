@@ -5,6 +5,7 @@ import {
   sendPasswordResetEmail,
   confirmPasswordReset,
   sendEmailVerification,
+  updateProfile,
   GoogleAuthProvider,
   signInWithPopup,
   onAuthStateChanged,
@@ -45,6 +46,27 @@ const normalizeUser = (user) => {
 
 const getUserCollectionRef = (uid, collectionName) => collection(db, 'users', uid, collectionName);
 const getUserDocRef = (uid, collectionName, docId) => doc(db, 'users', uid, collectionName, docId);
+
+const signupLog = (step, details = {}) => {
+  console.info(`[signup] ${step}`, details);
+};
+
+const initializeNewUser = async (user, displayName) => {
+  const userRef = doc(db, 'users', user.uid);
+  const settingsRef = doc(db, 'users', user.uid, 'userSettings', 'default');
+  const statisticsRef = doc(db, 'users', user.uid, 'statistics', 'overview');
+  const foldersRef = doc(db, 'users', user.uid, 'cloudFolders', 'root');
+  const profileRef = doc(db, 'users', user.uid, 'profile', 'default');
+  const batch = writeBatch(db);
+  const now = serverTimestamp();
+
+  batch.set(userRef, { uid: user.uid, email: user.email, displayName, createdAt: now, updatedAt: now }, { merge: true });
+  batch.set(profileRef, { uid: user.uid, displayName, email: user.email, initialized: true, createdAt: now, updatedAt: now }, { merge: true });
+  batch.set(settingsRef, { user_id: user.uid, dark_mode: true, notifications_enabled: true, sound_enabled: true, vibration_enabled: true, createdAt: now, updatedAt: now }, { merge: true });
+  batch.set(statisticsRef, { user_id: user.uid, study_minutes: 0, cards_reviewed: 0, sessions_completed: 0, createdAt: now, updatedAt: now }, { merge: true });
+  batch.set(foldersRef, { user_id: user.uid, name: 'My Files', path: `users/${user.uid}`, createdAt: now, updatedAt: now }, { merge: true });
+  await batch.commit();
+};
 
 const getUserId = async (providedId = null) => {
   const currentUid = auth.currentUser?.uid;
@@ -225,16 +247,38 @@ export const firebaseApi = {
       const credential = await signInWithEmailAndPassword(auth, email, password);
       return normalizeUser(credential.user);
     },
-    register: async ({ email, password }) => {
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      if (!credential.user.emailVerified) {
-        await sendEmailVerification(credential.user);
+    register: async ({ name, email, password }) => {
+      const cleanName = name?.trim();
+      const cleanEmail = email?.trim();
+      signupLog('validation started', { email: cleanEmail });
+      if (!cleanName) throw new Error('Name is required.');
+      if (!cleanEmail) throw new Error('Email is required.');
+      if (!password || password.length < 6) throw new Error('Password must be at least 6 characters.');
+      if (!auth || !db) throw new Error('Firebase is not configured. Check the VITE_FIREBASE_* environment variables.');
+      try {
+        signupLog('creating Firebase Authentication account', { email: cleanEmail });
+        const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        signupLog('Authentication account created', { uid: credential.user.uid });
+        await updateProfile(credential.user, { displayName: cleanName });
+        signupLog('display name saved', { uid: credential.user.uid });
+        await initializeNewUser(credential.user, cleanName);
+        signupLog('Firestore profile initialized', { uid: credential.user.uid });
+        if (!credential.user.emailVerified) {
+          try {
+            await sendEmailVerification(credential.user);
+            signupLog('email verification link sent', { uid: credential.user.uid });
+          } catch (verificationError) {
+            // The account is valid and signed in even when email delivery is temporarily unavailable.
+            signupLog('email verification link could not be sent', { code: verificationError?.code, message: verificationError?.message });
+          }
+        }
+        signupLog('signup completed', { uid: credential.user.uid });
+        return { ...normalizeUser(credential.user), displayName: cleanName };
+      } catch (error) {
+        signupLog('signup failed', { code: error?.code, message: error?.message });
+        throw error;
       }
-      return normalizeUser(credential.user);
     },
-    verifyOtp: async () => ({ access_token: 'firebase' }),
-    resendOtp: async () => true,
-    setToken: () => true,
     resetPasswordRequest: async (email) => {
       await sendPasswordResetEmail(auth, email);
       return true;
