@@ -1,12 +1,18 @@
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_MODELS_URL = `${GEMINI_API_BASE_URL}/models`;
-const CONFIGURED_GEMINI_MODEL = process.env.GEMINI_MODEL?.trim().replace(/^models\//, '');
 const REQUEST_TIMEOUT_MS = 25_000;
+
+const normalizeModelName = (model) => typeof model === 'string'
+  ? model.trim().replace(/^models\//, '')
+  : '';
+
+const CONFIGURED_GEMINI_MODEL = normalizeModelName(process.env.GEMINI_MODEL);
 
 const sendError = (res, status, error, provider) => res.status(status).json({
   success: false,
   status,
   ...(provider ? { provider } : {}),
+  model: CONFIGURED_GEMINI_MODEL || null,
   error,
 });
 
@@ -82,7 +88,10 @@ const listAvailableModels = async (apiKey, signal) => {
   return models;
 };
 
-const getGenerateContentUrl = (model) => `${GEMINI_API_BASE_URL}/models/${model}:generateContent`;
+const getGenerateContentUrl = (model) => {
+  const normalizedModel = normalizeModelName(model);
+  return `${GEMINI_API_BASE_URL}/models/${normalizedModel}:generateContent`;
+};
 
 const isModelsDiagnosticRequest = (req) => req.query?.diagnostic === 'models'
   || req.body?.diagnostic === 'models';
@@ -160,7 +169,7 @@ const providerError = (res, status, error, model) => res.status(status).json({
   success: false,
   status,
   provider: 'Gemini',
-  ...(model ? { model } : {}),
+  model: normalizeModelName(model) || CONFIGURED_GEMINI_MODEL || null,
   error,
 });
 
@@ -203,6 +212,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         provider: 'Gemini',
+        model: CONFIGURED_GEMINI_MODEL || null,
         models: summarizeModels(models),
       });
     }
@@ -211,9 +221,10 @@ export default async function handler(req, res) {
       return providerError(res, 500, 'GEMINI_MODEL is not configured. Run the models diagnostic request and configure one available model.');
     }
 
-    const model = CONFIGURED_GEMINI_MODEL;
-    console.info('[generatePlan] Gemini model selected.', { model });
+    const model = normalizeModelName(CONFIGURED_GEMINI_MODEL);
+    console.info('[generatePlan] Gemini model selected after normalization.', { model });
     const endpoint = getGenerateContentUrl(model);
+    console.info('[generatePlan] Gemini generateContent URL.', { endpoint });
     const payload = buildGeminiRequest(req.body);
     console.info('[generatePlan] Gemini request.', {
       endpoint,
@@ -255,7 +266,7 @@ export default async function handler(req, res) {
     }
 
     try {
-      return res.status(200).json({ success: true, plan: parsePlan(responseBody) });
+      return res.status(200).json({ success: true, model, plan: parsePlan(responseBody) });
     } catch (error) {
       console.error('[generatePlan] Invalid Gemini plan response.', error);
       if (error instanceof Error && error.stack) console.error(error.stack);
