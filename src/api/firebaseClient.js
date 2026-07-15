@@ -123,16 +123,14 @@ const buildEntityMap = () => ({
 const getGeminiErrorMessage = async (response) => {
   try {
     const errorData = await response.json();
-    const message = errorData?.error?.message || errorData?.error || 'Unable to reach Gemini';
-    if (message.includes('quota') || message.includes('rate') || message.includes('429')) {
-      return 'Gemini is currently unavailable because the API quota has been exceeded. Please try again later.';
+    const providerError = errorData?.error;
+    if (typeof providerError === 'string') return providerError;
+    if (providerError && typeof providerError === 'object') {
+      return providerError.message || JSON.stringify(providerError);
     }
-    if (message.includes('API key')) {
-      return 'Gemini API key is invalid or missing.';
-    }
-    return message;
-  } catch {
-    return 'Unable to reach Gemini';
+    return JSON.stringify(errorData);
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 };
 
@@ -168,7 +166,12 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema }) =>
   }
 
   const data = await response.json();
-  if (!data?.success) throw new Error(data?.error || 'Gemini did not return a plan.');
+  if (!data?.success) {
+    const providerError = data?.error;
+    throw new Error(typeof providerError === 'string'
+      ? providerError
+      : providerError?.message || JSON.stringify(providerError));
+  }
   return data.plan || {};
 };
 

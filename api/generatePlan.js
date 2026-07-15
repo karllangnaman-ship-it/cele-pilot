@@ -2,9 +2,32 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const REQUEST_TIMEOUT_MS = 25_000;
 
-const sendError = (res, status, error) => res.status(status).json({ success: false, error });
+const sendError = (res, status, error, provider) => res.status(status).json({
+  success: false,
+  status,
+  ...(provider ? { provider } : {}),
+  error,
+});
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const redactSecrets = (value) => {
+  if (Array.isArray(value)) return value.map(redactSecrets);
+  if (!isPlainObject(value)) return value;
+
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key,
+    /(?:api.?key|authorization|password|secret|token)/i.test(key) ? '[REDACTED]' : redactSecrets(item),
+  ]));
+};
+
+const toLogJson = (value) => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '[Unserializable value]';
+  }
+};
 
 const validateRequest = (body) => {
   if (!isPlainObject(body)) return 'Request body must be a JSON object.';
@@ -56,8 +79,6 @@ const buildGeminiRequest = ({ messages, temperature, response_format: responseFo
   };
 };
 
-const getGeminiError = (body) => body?.error?.message || 'The Gemini service rejected the request.';
-
 const parsePlan = (body) => {
   const text = body?.candidates?.[0]?.content?.parts
     ?.map((part) => part?.text || '')
@@ -70,16 +91,14 @@ const parsePlan = (body) => {
   return plan;
 };
 
-const mapGeminiError = (status) => {
-  if (status === 400) return [400, 'Invalid request sent to Gemini.'];
-  if (status === 401 || status === 403) return [502, 'The Gemini API key is invalid or does not have access.'];
-  if (status === 429) return [429, 'Gemini quota exceeded. Please try again later.'];
-  return [502, 'Gemini could not generate a plan. Please try again later.'];
-};
+const providerError = (res, status, error) => sendError(res, status, error, 'Gemini');
 
 export default async function handler(req, res) {
   const startedAt = Date.now();
-  console.info('[generatePlan] request received.', { method: req.method });
+  console.info('[generatePlan] request received.', {
+    method: req.method,
+    body: toLogJson(redactSecrets(req.body)),
+  });
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -90,9 +109,14 @@ export default async function handler(req, res) {
   if (validationError) return sendError(res, 400, validationError);
 
   const apiKey = process.env.GEMINI_API_KEY;
+  console.info('[generatePlan] Gemini configuration.', {
+    apiKeyConfigured: Boolean(apiKey),
+    endpoint: GEMINI_URL,
+    model: GEMINI_MODEL,
+  });
   if (!apiKey) {
     console.error('[generatePlan] GEMINI_API_KEY is not configured.');
-    return sendError(res, 500, 'The plan-generation service is not configured.');
+    return providerError(res, 500, 'GEMINI_API_KEY is not configured.');
   }
 
   const controller = new AbortController();
@@ -100,7 +124,11 @@ export default async function handler(req, res) {
 
   try {
     const payload = buildGeminiRequest(req.body);
-    console.info('[generatePlan] Gemini request.', { model: GEMINI_MODEL, messageCount: payload.contents.length });
+    console.info('[generatePlan] Gemini request.', {
+      endpoint: GEMINI_URL,
+      model: GEMINI_MODEL,
+      payload: toLogJson(payload),
+    });
     const response = await fetch(GEMINI_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -112,33 +140,41 @@ export default async function handler(req, res) {
     try {
       responseBody = JSON.parse(responseText);
     } catch {
-      console.error('[generatePlan] Gemini returned invalid JSON.', { status: response.status });
-      return sendError(res, 502, 'Gemini returned an invalid response.');
+      console.error('[generatePlan] Gemini returned a non-JSON response.', {
+        status: response.status,
+        body: responseText,
+      });
+      return providerError(res, response.ok ? 502 : response.status, responseText);
     }
 
-    console.info('[generatePlan] Gemini response.', { status: response.status });
+    console.info('[generatePlan] Gemini response.', {
+      status: response.status,
+      body: toLogJson(responseBody),
+    });
     if (!response.ok) {
-      const message = getGeminiError(responseBody);
-      console.error('[generatePlan] Gemini error.', { status: response.status, message });
-      const [status, error] = mapGeminiError(response.status);
-      return sendError(res, status, error);
+      // Preserve the provider's error object exactly as Gemini returned it.
+      const error = isPlainObject(responseBody) && Object.hasOwn(responseBody, 'error')
+        ? responseBody.error
+        : responseBody;
+      console.error('[generatePlan] Gemini error.', {
+        status: response.status,
+        body: toLogJson(responseBody),
+      });
+      return providerError(res, response.status, error);
     }
 
     try {
       return res.status(200).json({ success: true, plan: parsePlan(responseBody) });
     } catch (error) {
-      console.error('[generatePlan] Invalid Gemini plan response.', { message: error.message });
-      return sendError(res, 502, 'Gemini returned an invalid plan response.');
+      console.error('[generatePlan] Invalid Gemini plan response.', error);
+      if (error instanceof Error && error.stack) console.error(error.stack);
+      return providerError(res, 502, responseBody);
     }
   } catch (error) {
     const timedOut = error?.name === 'AbortError';
-    console.error('[generatePlan] Gemini request failed.', {
-      type: timedOut ? 'timeout' : 'network_failure',
-      message: error instanceof Error ? error.message : String(error),
-    });
-    return sendError(res, timedOut ? 504 : 502, timedOut
-      ? 'Gemini request timed out. Please try again.'
-      : 'Unable to reach Gemini. Please try again later.');
+    console.error('[generatePlan] Gemini request failed.', error);
+    if (error instanceof Error && error.stack) console.error(error.stack);
+    return providerError(res, timedOut ? 504 : 502, error instanceof Error ? error.message : String(error));
   } finally {
     clearTimeout(timeout);
     console.info('[generatePlan] execution time.', { milliseconds: Date.now() - startedAt });
