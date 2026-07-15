@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Calendar, Cloud, BarChart3, Settings, Clock, Brain, FileText, User, Menu, X, Plus, Upload } from 'lucide-react';
+import { Home, Calendar, Cloud, BarChart3, Settings, Clock, Brain, FileText, User, Menu, X, Plus, Upload, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const bottomNav = [
@@ -16,6 +16,7 @@ const drawerItems = [
   { path: '/flashcards', icon: Brain, label: 'Flashcards' },
   { path: '/notes', icon: FileText, label: 'Notes' },
   { path: '/survey', icon: User, label: 'Edit Profile' },
+  { path: '/notifications', icon: Bell, label: 'Notifications' },
 ];
 
 const quickActions = [

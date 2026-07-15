@@ -1,214 +1,34 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Shuffle, RotateCcw, Check, Brain, Clock } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ChevronRight, Shuffle } from 'lucide-react';
+import { firebaseApi } from '@/api/firebaseClient';
+import { toast } from '@/components/ui/use-toast';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const today = () => new Date().toISOString().split('T')[0];
+const subjects = [{ id: 'PSAD', icon: '📘' }, { id: 'MSTE', icon: '📐' }, { id: 'HGE', icon: '🌊' }, { id: 'mixed', icon: '🎲', label: 'Random / Mixed' }];
+const defaults = { subject: 'mixed', shuffle: true, spaced: false, weakOnly: false, favoritesOnly: false, incorrectOnly: false };
+const shuffle = list => [...list].sort(() => Math.random() - .5);
 
-function calculateNextReview(quality, easeFactor, intervalDays) {
-  let newEase = easeFactor || 2.5;
-  let newInterval;
-  switch (quality) {
-    case 'again':
-      newEase = Math.max(1.3, newEase - 0.3);
-      newInterval = 0;
-      break;
-    case 'hard':
-      newEase = Math.max(1.3, newEase - 0.15);
-      newInterval = Math.max(1, Math.round((intervalDays || 0) * 1.2));
-      break;
-    case 'good':
-      newInterval = intervalDays === 0 ? 1 : Math.round(intervalDays * newEase);
-      break;
-    case 'easy':
-      newEase = newEase + 0.15;
-      newInterval = intervalDays === 0 ? 2 : Math.round(intervalDays * newEase * 1.3);
-      break;
-  }
-  const due = new Date();
-  due.setDate(due.getDate() + newInterval);
-  return { ease_factor: newEase, interval_days: newInterval, due_date: due.toISOString().split('T')[0], mastered: quality === 'easy' && newInterval >= 21 };
+function nextReview(quality, card) {
+  const interval = quality === 'easy' ? Math.max(2, (card.interval_days || 0) * 2) : quality === 'good' ? Math.max(1, card.interval_days || 1) : 0;
+  const due = new Date(); due.setDate(due.getDate() + interval);
+  return { interval_days: interval, due_date: due.toISOString().split('T')[0], times_reviewed: (card.times_reviewed || 0) + 1, last_reviewed: today(), mastered: quality === 'easy' && interval >= 21 };
 }
 
-const MODES = [
-  { key: 'flip', label: 'Flip Cards', icon: RotateCcw, desc: 'Review sequentially' },
-  { key: 'shuffle', label: 'Shuffle', icon: Shuffle, desc: 'Random order review' },
-  { key: 'spaced', label: 'Spaced Repetition', icon: Brain, desc: 'Cards due for review' },
-];
-
-export default function StudySession({ cards, onUpdate, onExit }) {
-  const [mode, setMode] = useState(null);
-  const [deck, setDeck] = useState([]);
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [completed, setCompleted] = useState(0);
-  const [results, setResults] = useState(null);
-  const today = todayStr();
-
-  const dueCards = useMemo(() => {
-    return cards.filter(c => !c.due_date || c.due_date <= today);
-  }, [cards, today]);
-
-  const startSession = (selectedMode) => {
-    let sessionDeck;
-    if (selectedMode === 'spaced') {
-      sessionDeck = [...dueCards];
-    } else {
-      sessionDeck = [...cards];
-    }
-    if (selectedMode === 'shuffle') {
-      sessionDeck = sessionDeck.sort(() => Math.random() - 0.5);
-    }
-    if (sessionDeck.length === 0) {
-      return;
-    }
-    setMode(selectedMode);
-    setDeck(sessionDeck);
-    setIndex(0);
-    setFlipped(false);
-    setCompleted(0);
-    setResults(null);
-  };
-
-  const currentCard = deck[index];
-
-  const reviewCard = async (quality) => {
-    if (!currentCard) return;
-    const next = calculateNextReview(quality, currentCard.ease_factor, currentCard.interval_days);
-    const updated = await onUpdate(currentCard.id, {
-      ...next,
-      times_reviewed: (currentCard.times_reviewed || 0) + 1,
-      last_reviewed: today,
-    });
-    setCompleted(completed + 1);
-    if (index < deck.length - 1) {
-      setIndex(index + 1);
-      setFlipped(false);
-    } else {
-      setResults({ total: deck.length, completed: completed + 1 });
-      setMode(null);
-    }
-  };
-
-  const next = () => {
-    if (index < deck.length - 1) { setIndex(index + 1); setFlipped(false); }
-    else { setResults({ total: deck.length, completed: completed + 1 }); setMode(null); }
-  };
-
-  const prev = () => {
-    if (index > 0) { setIndex(index - 1); setFlipped(false); }
-  };
-
-  if (results) {
-    return (
-      <div className="glass-card p-8 text-center">
-        <div className="w-16 h-16 rounded-full bg-green-500/15 flex items-center justify-center mx-auto mb-4">
-          <Check className="w-8 h-8 text-green-500" />
-        </div>
-        <h3 className="text-xl font-bold mb-1">Session Complete!</h3>
-        <p className="text-muted-foreground mb-4">You reviewed {results.completed} flashcards</p>
-        <div className="flex gap-2 justify-center">
-          <Button onClick={() => { setResults(null); setMode(null); }}>Back to Modes</Button>
-          <Button variant="outline" onClick={onExit}>Exit Study</Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!mode) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {MODES.map(m => {
-            const count = m.key === 'spaced' ? dueCards.length : cards.length;
-            return (
-              <button
-                key={m.key}
-                onClick={() => startSession(m.key)}
-                disabled={count === 0}
-                className="glass-card p-6 text-center hover:shadow-lg transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <m.icon className="w-8 h-8 mx-auto mb-3 text-primary" />
-                <h3 className="font-semibold mb-1">{m.label}</h3>
-                <p className="text-xs text-muted-foreground">{m.desc}</p>
-                <p className="text-xs font-medium mt-2 text-primary">{count} cards</p>
-              </button>
-            );
-          })}
-        </div>
-        {dueCards.length > 0 && (
-          <div className="glass-card p-4 flex items-center gap-3">
-            <Clock className="w-5 h-5 text-amber-500" />
-            <p className="text-sm"><span className="font-semibold">{dueCards.length}</span> cards due for review today</p>
-          </div>
-        )}
-        {cards.length === 0 && (
-          <div className="glass-card p-8 text-center">
-            <p className="text-muted-foreground">No flashcards yet. Create or upload some first!</p>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={() => setMode(null)}>← Exit</Button>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">{index + 1} / {deck.length}</span>
-          <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-primary transition-all" style={{ width: `${((index + 1) / deck.length) * 100}%` }} />
-          </div>
-        </div>
-      </div>
-
-      <div className="flex justify-center" style={{ perspective: '1000px' }}>
-        <motion.div
-          className="w-full max-w-md h-64 cursor-pointer relative"
-          onClick={() => setFlipped(!flipped)}
-          style={{ transformStyle: 'preserve-3d' }}
-          animate={{ rotateY: flipped ? 180 : 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <div className="absolute inset-0 glass-card p-6 flex flex-col items-center justify-center text-center" style={{ backfaceVisibility: 'hidden' }}>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary mb-3">{currentCard?.subject}</span>
-            <p className="text-lg font-medium" dangerouslySetInnerHTML={{ __html: (currentCard?.question || '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-            <p className="text-xs text-muted-foreground mt-auto pt-4">Tap to flip</p>
-          </div>
-          <div className="absolute inset-0 glass-card p-6 flex flex-col items-center justify-center text-center bg-gradient-to-br from-primary/10 to-blue-500/10" style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
-            <p className="text-sm font-medium overflow-y-auto" dangerouslySetInnerHTML={{ __html: (currentCard?.answer || '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-            {currentCard?.explanation && <p className="text-xs text-muted-foreground mt-3 italic">{currentCard.explanation}</p>}
-          </div>
-        </motion.div>
-      </div>
-
-      {mode === 'spaced' && flipped ? (
-        <div className="grid grid-cols-4 gap-2 max-w-md mx-auto">
-          <Button variant="outline" className="border-red-500/30 text-red-500 hover:bg-red-500/10" onClick={() => reviewCard('again')}>
-            <span className="text-2xl">⚫</span><span className="text-xs">Again</span>
-          </Button>
-          <Button variant="outline" className="border-orange-500/30 text-orange-500 hover:bg-orange-500/10" onClick={() => reviewCard('hard')}>
-            <span className="text-2xl">🔴</span><span className="text-xs">Hard</span>
-          </Button>
-          <Button variant="outline" className="border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10" onClick={() => reviewCard('good')}>
-            <span className="text-2xl">🟡</span><span className="text-xs">Good</span>
-          </Button>
-          <Button variant="outline" className="border-green-500/30 text-green-500 hover:bg-green-500/10" onClick={() => reviewCard('easy')}>
-            <span className="text-2xl">🟢</span><span className="text-xs">Easy</span>
-          </Button>
-        </div>
-      ) : (
-        <div className="flex items-center justify-center gap-4">
-          <Button variant="outline" size="icon" onClick={prev} disabled={index === 0}><ChevronLeft className="w-4 h-4" /></Button>
-          {!flipped ? (
-            <Button onClick={() => setFlipped(true)} size="sm">Show Answer</Button>
-          ) : (
-            <Button onClick={next} size="sm">{index < deck.length - 1 ? 'Next Card' : 'Finish'} <ChevronRight className="w-4 h-4" /></Button>
-          )}
-          <Button variant="outline" size="icon" onClick={next} disabled={index === deck.length - 1}><ChevronRight className="w-4 h-4" /></Button>
-        </div>
-      )}
-    </div>
-  );
+export default function StudySession({ cards, onUpdate, onExit, user }) {
+  const [prefs, setPrefs] = useState(defaults); const [settings, setSettings] = useState(null); const [open, setOpen] = useState(true);
+  const [deck, setDeck] = useState([]); const [index, setIndex] = useState(0); const [flipped, setFlipped] = useState(false); const [stats, setStats] = useState(null); const [startedAt, setStartedAt] = useState(null);
+  useEffect(() => { if (!user) return; firebaseApi.entities.UserSettings.filter({ user_id: user.id }).then(rows => { const value = rows[0]; setSettings(value); if (value?.flashcard_review_preferences) setPrefs({ ...defaults, ...value.flashcard_review_preferences }); }).catch(() => {}); }, [user]);
+  const candidateCount = useMemo(() => cards.filter(card => (prefs.subject === 'mixed' || card.subject === prefs.subject) && (!prefs.spaced || !card.due_date || card.due_date <= today()) && (!prefs.favoritesOnly || card.is_favorite) && (!prefs.incorrectOnly || card.last_result === 'incorrect') && (!prefs.weakOnly || card.mastered === false)).length, [cards, prefs]);
+  const savePrefs = async next => { setPrefs(next); if (!user) return; try { if (settings) { await firebaseApi.entities.UserSettings.update(settings.id, { flashcard_review_preferences: next }); } else { const made = await firebaseApi.entities.UserSettings.create({ user_id: user.id, flashcard_review_preferences: next }); setSettings(made); } } catch {} };
+  const start = async () => { const selected = cards.filter(card => (prefs.subject === 'mixed' || card.subject === prefs.subject) && (!prefs.spaced || !card.due_date || card.due_date <= today()) && (!prefs.favoritesOnly || card.is_favorite) && (!prefs.incorrectOnly || card.last_result === 'incorrect') && (!prefs.weakOnly || card.mastered === false)); if (!selected.length) return toast({ title: 'No matching flashcards', description: 'Try adjusting your review filters.', variant: 'info' }); await savePrefs(prefs); setDeck(prefs.shuffle ? shuffle(selected) : selected); setIndex(0); setFlipped(false); setStats({ correct: 0, incorrect: 0, skipped: 0 }); setStartedAt(Date.now()); setOpen(false); };
+  const finish = async finalStats => { const reviewed = finalStats.correct + finalStats.incorrect; const record = { user_id: user.id, subject: prefs.subject, review_mode: prefs.spaced ? 'spaced-repetition' : 'flip', cards_reviewed: reviewed, correct: finalStats.correct, incorrect: finalStats.incorrect, skipped: finalStats.skipped, accuracy: reviewed ? Math.round(finalStats.correct / reviewed * 100) : 0, time_spent_seconds: Math.round((Date.now() - startedAt) / 1000), completed_at: new Date().toISOString() }; try { await firebaseApi.entities.FlashcardSession.create(record); } catch {} setStats(null); setDeck([]); toast({ title: 'Study session finished', description: `${reviewed} cards reviewed`, dedupeKey: `session-${Date.now()}` }); };
+  const rate = async quality => { const card = deck[index]; const correct = quality === 'good' || quality === 'easy'; await onUpdate(card.id, { ...nextReview(quality, card), last_result: correct ? 'correct' : 'incorrect' }); const next = { ...stats, correct: stats.correct + (correct ? 1 : 0), incorrect: stats.incorrect + (correct ? 0 : 1) }; if (index === deck.length - 1) finish(next); else { setStats(next); setIndex(index + 1); setFlipped(false); } };
+  const skip = () => { const next = { ...stats, skipped: stats.skipped + 1 }; if (index === deck.length - 1) finish(next); else { setStats(next); setIndex(index + 1); setFlipped(false); } };
+  if (!deck.length) return <><Button className="w-full sm:w-auto" onClick={() => setOpen(true)}>Flip Cards</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="bottom-0 top-auto max-w-none translate-y-0 rounded-t-[24px] border-border/50 bg-card/90 backdrop-blur-2xl sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2"><DialogHeader><DialogTitle>Choose a Subject</DialogTitle></DialogHeader><div className="grid grid-cols-2 gap-3">{subjects.map(subject => <button key={subject.id} onClick={() => setPrefs(p => ({ ...p, subject: subject.id }))} className={`rounded-2xl border p-4 text-left transition ${prefs.subject === subject.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}><span className="text-2xl">{subject.icon}</span><p className="mt-2 font-medium">{subject.label || subject.id}</p></button>)}</div><div className="space-y-3 py-2">{[['shuffle','Shuffle Cards'],['spaced','Use Spaced Repetition'],['weakOnly','Review Weak Topics Only'],['favoritesOnly','Favorites Only'],['incorrectOnly','Incorrect Cards Only']].map(([key,label]) => <label key={key} className="flex min-h-11 items-center justify-between"><span className="text-sm">{key === 'shuffle' && <Shuffle className="mr-2 inline h-4 w-4" />}{label}</span><Switch checked={prefs[key]} onCheckedChange={value => setPrefs(p => ({ ...p, [key]: value }))}/></label>)}</div><p className="text-xs text-muted-foreground">{candidateCount} cards match your selection</p><Button size="lg" className="w-full" onClick={start} disabled={!candidateCount}>Start Review</Button></DialogContent></Dialog></>;
+  const card = deck[index];
+  return <div className="space-y-4"><div className="flex items-center justify-between"><Button variant="ghost" size="sm" onClick={() => finish(stats)}>Exit</Button><span className="text-sm text-muted-foreground">{index + 1} / {deck.length}</span></div><div className="flex justify-center" style={{ perspective: '1000px' }}><motion.button aria-label="Flip flashcard" className="relative h-64 w-full max-w-md text-left" onClick={() => setFlipped(!flipped)} style={{ transformStyle: 'preserve-3d' }} animate={{ rotateY: flipped ? 180 : 0 }} transition={{ duration: .35 }}><div className="glass-card absolute inset-0 flex flex-col items-center justify-center p-6 text-center" style={{ backfaceVisibility: 'hidden' }}><span className="mb-3 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{card.subject}</span><p className="text-lg font-medium">{card.question}</p><p className="mt-auto text-xs text-muted-foreground">Tap to flip</p></div><div className="glass-card absolute inset-0 flex items-center justify-center bg-primary/5 p-6 text-center" style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}><p>{card.answer}</p></div></motion.button></div>{flipped ? <div className="grid grid-cols-4 gap-2"><Button variant="outline" onClick={() => rate('again')}>Again</Button><Button variant="outline" onClick={() => rate('hard')}>Hard</Button><Button onClick={() => rate('good')}>Good</Button><Button onClick={() => rate('easy')}>Easy</Button></div> : <div className="flex justify-center gap-2"><Button variant="outline" onClick={skip}>Skip</Button><Button onClick={() => setFlipped(true)}>Show Answer <ChevronRight className="ml-1 h-4 w-4"/></Button></div>}</div>;
 }

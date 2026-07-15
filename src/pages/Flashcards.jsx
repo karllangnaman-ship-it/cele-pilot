@@ -234,7 +234,7 @@ export default function Flashcards() {
 
         {tab === 'study' && (
           <div className="mt-4">
-            <StudySession cards={cards} onUpdate={updateCard} onExit={() => setTab('deck')} />
+            <StudySession cards={cards} user={user} onUpdate={updateCard} onExit={() => setTab('deck')} />
           </div>
         )}
 

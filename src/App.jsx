@@ -38,6 +38,7 @@ import Notes from '@/pages/Notes';
 import Storage from '@/pages/Storage';
 import Stats from '@/pages/Stats';
 import SettingsPage from '@/pages/SettingsPage';
+import Notifications from '@/pages/Notifications';
 import AppLayout from '@/components/AppLayout';
 
 const AuthenticatedApp = () => {
@@ -88,6 +89,7 @@ const AuthenticatedApp = () => {
           <Route path="/storage" element={<Storage />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/notifications" element={<Notifications />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

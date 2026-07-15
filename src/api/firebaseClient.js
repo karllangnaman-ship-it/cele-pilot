@@ -47,8 +47,11 @@ const getUserCollectionRef = (uid, collectionName) => collection(db, 'users', ui
 const getUserDocRef = (uid, collectionName, docId) => doc(db, 'users', uid, collectionName, docId);
 
 const getUserId = async (providedId = null) => {
-  if (providedId) return providedId;
-  if (auth.currentUser?.uid) return auth.currentUser.uid;
+  const currentUid = auth.currentUser?.uid;
+  if (providedId && currentUid && providedId !== currentUid) {
+    throw new Error('Cannot access another user\'s data');
+  }
+  if (currentUid) return currentUid;
   throw new Error('Authentication required');
 };
 
@@ -118,6 +121,8 @@ const buildEntityMap = () => ({
   UserSettings: getEntityApi('userSettings'),
   TimerState: getEntityApi('timerStates'),
   TimerHistory: getEntityApi('timerHistories'),
+  Notification: getEntityApi('notifications'),
+  FlashcardSession: getEntityApi('flashcardSessions'),
 });
 
 const getGeminiErrorMessage = async (response) => {

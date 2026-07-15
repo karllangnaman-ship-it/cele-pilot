@@ -1,15 +1,12 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useCallback } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
 import { getAchievementConfig, getRandomQuote } from '@/lib/achievements';
-import AchievementPopup from '@/components/AchievementPopup';
+import { toast } from '@/components/ui/use-toast';
 
 const AchievementContext = createContext(null);
 export const useAchievement = () => useContext(AchievementContext);
 
 export function AchievementProvider({ children }) {
-  const [queue, setQueue] = useState([]);
-  const [current, setCurrent] = useState(null);
-
   const triggerAchievement = useCallback(async (key, customTitle, customDescription) => {
     try {
       const u = await firebaseApi.auth.me();
@@ -32,33 +29,15 @@ export function AchievementProvider({ children }) {
         earned_date: new Date().toISOString().split('T')[0],
       });
 
-      setQueue(prev => [...prev, ach]);
+      toast({ title: 'Achievement unlocked', description: `${ach.icon || '🏅'} ${title}`, dedupeKey: `achievement-${key}` });
     } catch (e) {
       // Achievements are non-critical — silently skip
     }
   }, []);
 
-  const handleDismiss = useCallback(async () => {
-    if (!current) return;
-    try {
-      await firebaseApi.entities.Achievement.update(current.id, { read: true, dismissed: true });
-    } catch (e) {}
-    setCurrent(null);
-  }, [current]);
-
-  useEffect(() => {
-    if (!current && queue.length > 0) {
-      const next = queue[0];
-      setQueue(prev => prev.slice(1));
-      const timer = setTimeout(() => setCurrent(next), 400);
-      return () => clearTimeout(timer);
-    }
-  }, [current, queue]);
-
   return (
     <AchievementContext.Provider value={{ triggerAchievement }}>
       {children}
-      {current && <AchievementPopup achievement={current} onDismiss={handleDismiss} />}
     </AchievementContext.Provider>
   );
 }
