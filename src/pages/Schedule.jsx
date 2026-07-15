@@ -229,7 +229,7 @@ Return a JSON object with a "tasks" array.`;
     } catch (error) {
       result = { tasks: buildFallbackSchedule(profile, selectedDate, manualSlots) };
       toast({
-        title: 'Cerebras unavailable, using local plan',
+        title: 'AI service unavailable, using local plan',
         description: 'A fallback schedule was created based on your saved profile.',
       });
     }

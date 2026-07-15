@@ -120,37 +120,28 @@ const buildEntityMap = () => ({
   TimerHistory: getEntityApi('timerHistories'),
 });
 
-const parseJsonResponse = (text) => {
-  const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    return { text: cleaned };
-  }
-};
-
-const getCerebrasErrorMessage = async (response) => {
+const getGeminiErrorMessage = async (response) => {
   try {
     const errorData = await response.json();
-    const message = errorData?.error?.message || errorData?.error || 'Unable to reach Cerebras API';
+    const message = errorData?.error?.message || errorData?.error || 'Unable to reach Gemini';
     if (message.includes('quota') || message.includes('rate') || message.includes('429')) {
-      return 'Cerebras is currently unavailable because the API quota has been exceeded. Please try again later or update the API key.';
+      return 'Gemini is currently unavailable because the API quota has been exceeded. Please try again later.';
     }
     if (message.includes('API key')) {
-      return 'Cerebras API key is invalid or missing.';
+      return 'Gemini API key is invalid or missing.';
     }
     return message;
   } catch {
-    return 'Unable to reach Cerebras API';
+    return 'Unable to reach Gemini';
   }
 };
 
-const invokeCerebras = async ({ prompt, file_urls = [], response_json_schema }) => {
+const invokeGemini = async ({ prompt, file_urls = [], response_json_schema }) => {
   const systemPrompt = 'You are a helpful CELE study planner. Return valid JSON only when requested.';
   const userPrompt = file_urls.length > 0 ? `${prompt}\n\nAdditional file references:\n${file_urls.join('\n')}` : prompt;
 
   const payload = {
-    model: 'llama3.1-8b',
+    model: 'gemini-2.5-flash',
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
@@ -172,13 +163,13 @@ const invokeCerebras = async ({ prompt, file_urls = [], response_json_schema }) 
   });
 
   if (!response.ok) {
-    const errorMessage = await getCerebrasErrorMessage(response);
+    const errorMessage = await getGeminiErrorMessage(response);
     throw new Error(errorMessage);
   }
 
   const data = await response.json();
-  const text = data?.choices?.[0]?.message?.content || '{}';
-  return parseJsonResponse(text);
+  if (!data?.success) throw new Error(data?.error || 'Gemini did not return a plan.');
+  return data.plan || {};
 };
 
 const coreIntegrations = {
@@ -201,18 +192,18 @@ const coreIntegrations = {
   async ExtractDataFromUploadedFile({ file_url, json_schema }) {
     const response = await fetch(file_url);
     const contentText = await response.text();
-    return invokeCerebras({
+    return invokeGemini({
       prompt: `Extract structured data from the provided file content. Return valid JSON matching the requested schema.\n\nContent:\n${contentText}`,
       response_json_schema: json_schema,
     });
   },
   async TranscribeAudio({ audio_url }) {
-    return invokeCerebras({
+    return invokeGemini({
       prompt: `Transcribe the supplied audio content into text. Return only the transcription.\n\nAudio URL: ${audio_url}`,
     });
   },
   async InvokeLLM({ prompt, response_json_schema, file_urls = [] }) {
-    return invokeCerebras({ prompt, file_urls, response_json_schema });
+    return invokeGemini({ prompt, file_urls, response_json_schema });
   },
 };
 

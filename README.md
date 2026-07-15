@@ -1,37 +1,44 @@
 # CELE Pilot
 
-CELE Pilot is a Vite + React study-planning app powered by Firebase Authentication, Firestore, Firebase Storage, and a Vercel serverless function for plan generation.
+CELE Pilot is a Vite + React study-planning app powered by Firebase Authentication, Firestore, Firebase Storage, and a Vercel serverless function that generates plans with Google Gemini.
 
 ## Prerequisites
 
-1. Clone the repository.
-2. Navigate to the project directory.
-3. Install dependencies with `npm install`.
-4. Create a local environment file with your Firebase configuration and Cerebras API key.
+1. Clone the repository and run `npm install`.
+2. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
+3. Copy `.env.example` to `.env.local` and fill in your Firebase values and `GEMINI_API_KEY`.
 
-## Local Development
+`GEMINI_API_KEY` is server-side only. Do not prefix it with `VITE_`, commit it, or place it in frontend code.
 
-Run the frontend locally:
+## Local development
+
+Run the Vite frontend:
 
 ```bash
 npm run dev
 ```
 
-## Environment Variables
-
-Create a `.env.local` file in the project root and add:
+To exercise `/api/generatePlan` locally, use the Vercel CLI so the serverless API is available:
 
 ```bash
-VITE_FIREBASE_API_KEY=your_firebase_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-CEREBRAS_API_KEY=your_cerebras_api_key
+npx vercel dev
 ```
 
-For Vercel, add all six `VITE_FIREBASE_*` variables to the Production environment. They are compiled into the Vite frontend, so redeploy after changing them. Add `CEREBRAS_API_KEY` only as a server-side Vercel environment variable; it is used exclusively by `api/generatePlan.js` and must not be prefixed with `VITE_`.
+The endpoint accepts the existing chat-style request body and returns either:
+
+```json
+{ "success": true, "plan": {} }
+```
+
+or:
+
+```json
+{ "success": false, "error": "..." }
+```
+
+## Vercel deployment
+
+In Vercel, add every `VITE_FIREBASE_*` variable for the appropriate environment and add `GEMINI_API_KEY` as a server-side environment variable. Do not expose it as a `VITE_` variable. Redeploy after changing environment variables.
 
 ## Build
 
