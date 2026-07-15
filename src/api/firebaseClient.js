@@ -30,7 +30,7 @@ import {
   getDownloadURL,
   deleteObject,
 } from 'firebase/storage';
-import { auth, db, storage, googleProvider } from '@/firebase';
+import { auth, db, storage, googleProvider, firebaseInitializationError } from '@/firebase';
 
 const normalizeUser = (user) => {
   if (!user) return null;
@@ -52,6 +52,7 @@ const signupLog = (step, details = {}) => {
 };
 
 const initializeNewUser = async (user, displayName) => {
+  signupLog('creating Firestore user profile', { uid: user.uid });
   const userRef = doc(db, 'users', user.uid);
   const settingsRef = doc(db, 'users', user.uid, 'userSettings', 'default');
   const statisticsRef = doc(db, 'users', user.uid, 'statistics', 'overview');
@@ -60,12 +61,23 @@ const initializeNewUser = async (user, displayName) => {
   const batch = writeBatch(db);
   const now = serverTimestamp();
 
-  batch.set(userRef, { uid: user.uid, email: user.email, displayName, createdAt: now, updatedAt: now }, { merge: true });
+  batch.set(userRef, {
+    uid: user.uid,
+    fullName: displayName,
+    displayName,
+    email: user.email,
+    preferences: { darkMode: true, notificationsEnabled: true, soundEnabled: true, vibrationEnabled: true },
+    statistics: { studyMinutes: 0, cardsReviewed: 0, sessionsCompleted: 0 },
+    cloudProfile: { rootFolder: `users/${user.uid}`, initialized: true },
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
   batch.set(profileRef, { uid: user.uid, displayName, email: user.email, initialized: true, createdAt: now, updatedAt: now }, { merge: true });
   batch.set(settingsRef, { user_id: user.uid, dark_mode: true, notifications_enabled: true, sound_enabled: true, vibration_enabled: true, createdAt: now, updatedAt: now }, { merge: true });
   batch.set(statisticsRef, { user_id: user.uid, study_minutes: 0, cards_reviewed: 0, sessions_completed: 0, createdAt: now, updatedAt: now }, { merge: true });
   batch.set(foldersRef, { user_id: user.uid, name: 'My Files', path: `users/${user.uid}`, createdAt: now, updatedAt: now }, { merge: true });
   await batch.commit();
+  signupLog('Firestore user profile created', { uid: user.uid });
 };
 
 const getUserId = async (providedId = null) => {
@@ -245,16 +257,24 @@ export const firebaseApi = {
     },
     loginViaEmailPassword: async (email, password) => {
       const credential = await signInWithEmailAndPassword(auth, email, password);
+      await credential.user.reload();
+      if (!credential.user.emailVerified) {
+        await signOut(auth);
+        const error = new Error('Please verify your email before logging in.');
+        error.code = 'auth/email-not-verified';
+        throw error;
+      }
       return normalizeUser(credential.user);
     },
     register: async ({ name, email, password }) => {
       const cleanName = name?.trim();
       const cleanEmail = email?.trim();
       signupLog('validation started', { email: cleanEmail });
-      if (!cleanName) throw new Error('Name is required.');
-      if (!cleanEmail) throw new Error('Email is required.');
-      if (!password || password.length < 6) throw new Error('Password must be at least 6 characters.');
-      if (!auth || !db) throw new Error('Firebase is not configured. Check the VITE_FIREBASE_* environment variables.');
+      if (!cleanName) { signupLog('validation failed', { field: 'name' }); throw new Error('Name is required.'); }
+      if (!cleanEmail) { signupLog('validation failed', { field: 'email' }); throw new Error('Email is required.'); }
+      if (!password || password.length < 6) { signupLog('validation failed', { field: 'password' }); throw new Error('Password must be at least 6 characters.'); }
+      signupLog('Firebase initialization checked', { initialized: Boolean(auth && db), error: firebaseInitializationError || null });
+      if (!auth || !db) throw new Error(firebaseInitializationError || 'Firebase Authentication or Firestore failed to initialize.');
       try {
         signupLog('creating Firebase Authentication account', { email: cleanEmail });
         const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
@@ -263,15 +283,9 @@ export const firebaseApi = {
         signupLog('display name saved', { uid: credential.user.uid });
         await initializeNewUser(credential.user, cleanName);
         signupLog('Firestore profile initialized', { uid: credential.user.uid });
-        if (!credential.user.emailVerified) {
-          try {
-            await sendEmailVerification(credential.user);
-            signupLog('email verification link sent', { uid: credential.user.uid });
-          } catch (verificationError) {
-            // The account is valid and signed in even when email delivery is temporarily unavailable.
-            signupLog('email verification link could not be sent', { code: verificationError?.code, message: verificationError?.message });
-          }
-        }
+        signupLog('sending Firebase email verification link', { uid: credential.user.uid });
+        await sendEmailVerification(credential.user);
+        signupLog('email verification link sent', { uid: credential.user.uid });
         signupLog('signup completed', { uid: credential.user.uid });
         return { ...normalizeUser(credential.user), displayName: cleanName };
       } catch (error) {
@@ -282,6 +296,17 @@ export const firebaseApi = {
     resetPasswordRequest: async (email) => {
       await sendPasswordResetEmail(auth, email);
       return true;
+    },
+    resendEmailVerification: async (email, password) => {
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      try {
+        await credential.user.reload();
+        if (credential.user.emailVerified) return { alreadyVerified: true };
+        await sendEmailVerification(credential.user);
+        return { sent: true };
+      } finally {
+        await signOut(auth);
+      }
     },
     resetPassword: async ({ resetToken, newPassword }) => {
       if (!resetToken) throw new Error('Reset token is missing');

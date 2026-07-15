@@ -28,6 +28,12 @@ export const AuthProvider = ({ children }) => {
         setIsLoadingPublicSettings(false);
         setAuthError(null);
         if (currentUser) {
+          await currentUser.reload();
+          if (!currentUser.emailVerified) {
+            setUser(null);
+            setIsAuthenticated(false);
+            return;
+          }
           const userData = await firebaseApi.auth.me();
           setUser(userData);
           setIsAuthenticated(true);

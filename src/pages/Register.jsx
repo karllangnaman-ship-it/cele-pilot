@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { firebaseApi } from "@/api/firebaseClient";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Lock, Loader2, User } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -15,6 +16,18 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const redirectToVerificationPending = () => {
+    console.info('[signup] redirecting to verification pending');
+    window.location.assign(`/verification-pending?email=${encodeURIComponent(email.trim())}`);
+  };
+
+  useEffect(() => {
+    if (!success) return undefined;
+    const timer = setTimeout(redirectToVerificationPending, 2200);
+    return () => clearTimeout(timer);
+  }, [success, email]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -40,9 +53,12 @@ export default function Register() {
     setLoading(true);
     try {
       console.info('[signup] registration submitted', { email: cleanEmail });
+      console.info('[signup] calling Firebase registration');
       await firebaseApi.auth.register({ name: cleanName, email: cleanEmail, password });
-      console.info('[signup] redirecting to dashboard');
-      window.location.assign('/dashboard');
+      console.info('[signup] signing out verified-pending account');
+      await firebaseApi.auth.logout(null);
+      console.info('[signup] showing registration success dialog');
+      setSuccess(true);
     } catch (err) {
       console.error('[signup] registration failed', { code: err?.code, message: err?.message });
       setError(`${err?.code ? `${err.code}: ` : ''}${err?.message || 'Registration failed'}`);
@@ -62,13 +78,17 @@ export default function Register() {
       subtitle="Sign up to get started"
       footer={
         <>
-          Already have an account?{" "}
-          <Link to="/login" className="text-primary font-medium hover:underline">
-            Log in
-          </Link>
+          <Link to="/login" className="text-primary font-medium hover:underline">Back to Login</Link>
         </>
       }
     >
+      <Dialog open={success}>
+        <DialogContent onPointerDownOutside={(event) => event.preventDefault()} onEscapeKeyDown={(event) => event.preventDefault()}>
+          <DialogHeader><DialogTitle>Account created successfully</DialogTitle></DialogHeader>
+          <p className="whitespace-pre-line text-sm text-muted-foreground">Your account has been created successfully.{"\n"}A verification link has been sent to your email.</p>
+          <Button onClick={redirectToVerificationPending}>Continue</Button>
+        </DialogContent>
+      </Dialog>
       <Button
         variant="outline"
         className="w-full h-12 text-sm font-medium mb-6"
@@ -95,7 +115,7 @@ export default function Register() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="name">Name</Label>
+          <Label htmlFor="name">Full Name</Label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
             <Input id="name" type="text" autoComplete="name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} className="pl-10 h-12" required />

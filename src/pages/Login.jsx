@@ -12,20 +12,27 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setNeedsVerification(false);
     setLoading(true);
     try {
       await firebaseApi.auth.loginViaEmailPassword(email, password);
-      window.location.href = "/";
+      window.location.href = "/dashboard";
     } catch (err) {
+      if (err?.code === 'auth/email-not-verified') setNeedsVerification(true);
       setError(err.message || "Invalid email or password");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleResend = () => {
+    window.location.assign(`/verification-pending?email=${encodeURIComponent(email.trim())}`);
   };
 
   const handleGoogle = () => {
@@ -69,6 +76,7 @@ export default function Login() {
           {error}
         </div>
       )}
+      {needsVerification && <Button type="button" variant="outline" className="mb-4 w-full" onClick={handleResend}>Resend Verification Email</Button>}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
