@@ -1,6 +1,6 @@
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_MODELS_URL = `${GEMINI_API_BASE_URL}/models`;
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
 const normalizeModelName = (model) => typeof model === 'string'
   ? model.trim().replace(/^models\//, '')
