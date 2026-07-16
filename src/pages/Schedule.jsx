@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
 import { Button } from '@/components/ui/button';
-import { format, addDays, parseISO } from 'date-fns';
+import { format, addDays, parseISO, differenceInCalendarDays } from 'date-fns';
 import { motion } from 'framer-motion';
 import { Sparkles, ChevronLeft, ChevronRight, Check, SkipForward, Clock, Loader2, CalendarDays, List, Plus, Edit2, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -177,6 +177,9 @@ export default function Schedule() {
       ? currentPlan.filter(task => task.type === 'study').reduce((sum, task) => sum + Number(task.duration_minutes || 0), 0)
       : Math.round(Number(profile.available_hours || 6) * 60);
     const recentOrders = priorSchedules.slice(-4).map(record => record.subject_order || []);
+    const previousRecord = priorSchedules.filter(record => record.date < selectedDate)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date))).at(-1);
+    const examCountdown = profile.exam_date ? differenceInCalendarDays(parseISO(profile.exam_date), parseISO(selectedDate)) : null;
 
     const prompt = `You are a CELE (Civil Engineering Licensure Examination) review planner AI. Generate a personalized study schedule for ${selectedDate}.
 
@@ -204,6 +207,8 @@ Learning analytics (these are required inputs, not optional context):
 - Overall: ${analytics.completionRate}% completion, ${analytics.reviewStreak}-day review streak, ${analytics.averageStudyDuration}-minute average study session, ${analytics.flashcardSuccessRate}% flashcard success
 - Weakest/strongest subject: ${analytics.weakestSubject}/${analytics.strongestSubject}; weak topics and mistakes: ${analytics.weakTopics.join(', ') || 'none recorded'}; improving topics: ${analytics.strongTopics.join(', ') || 'none recorded'}
 - Previous reflection: ${analytics.yesterdaySummary.reflection || 'none recorded'}
+- Exam countdown: ${examCountdown === null ? 'not set' : `${Math.max(0, examCountdown)} days until CELE`}
+- Previous AI guidance: ${previousRecord?.ai_summary || 'none'} / focus: ${previousRecord?.daily_focus || 'none'}
 - Recent subject orders (must not duplicate): ${JSON.stringify(recentOrders)}
 - ${currentPlan.length ? `REGENERATION: retain exactly ${requiredStudyMinutes} study minutes while changing task sequence, subject order, practice formats, coach notes, and motivation.` : `NEW SCHEDULE: plan exactly ${requiredStudyMinutes} study minutes.`}
 
@@ -222,7 +227,7 @@ Rules:
 - Make it realistic and balanced. Do not use a fixed template.
 - Each task needs: title, subject (MSTE/HGE/PSAD or empty for non-study), type (study/break/meal/exercise/flashcard/review/reflection/sleep/wake_up/other), time_start (HH:MM), time_end (HH:MM), duration_minutes, topic.
 
-Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_motivation (original short sentence), daily_focus, reflection_prompt, recommendations {today_focus, topics_to_review, topics_to_practice, topics_improving, suggested_break_time, sleep_reminder}, and performance_analysis.`;
+Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_motivation (original short sentence that does not repeat the previous message), daily_focus, reflection_prompt, recommendations {today_focus, topics_to_review, topics_to_practice, topics_improving, study_tip, suggested_break_time, sleep_reminder}, and performance_analysis.`;
 
     let result;
     try {
@@ -249,12 +254,24 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
         }
       });
     } catch (error) {
+      const fallbackVariant = priorSchedules.filter(item => item.date === selectedDate).length;
+      const motivations = [
+        'Small, deliberate sessions today build the engineer you want to become.',
+        'Progress is earned one focused problem set at a time.',
+        'Your steady preparation today makes exam confidence tomorrow.',
+      ];
+      const fallbackMotivation = motivations.find(message => message !== previousRecord?.daily_motivation) || motivations[fallbackVariant % motivations.length];
+      const fallbackSummaries = [
+        `Yesterday you completed ${analytics.yesterdaySummary.completionRate}% of planned tasks. Today gives ${analytics.weakestSubject} focused attention and revisits ${analytics.weakTopics[0] || 'recent mistakes'} without overloading you.`,
+        `Your ${analytics.reviewStreak}-day review streak is shaping today’s plan. We are varying the practice sequence while reinforcing ${analytics.weakestSubject} and protecting recovery time.`,
+        `Today balances targeted ${analytics.weakestSubject} practice with lighter reinforcement of improving topics. Use the spaced review block to correct yesterday’s mistakes early.`,
+      ];
       result = {
         tasks: buildAdaptiveFallback(profile, selectedDate, manualTasks, analytics, priorSchedules.filter(item => item.date === selectedDate).length, requiredStudyMinutes),
-        ai_summary: `Yesterday you completed ${analytics.yesterdaySummary.completionRate}% of planned tasks. Today gives ${analytics.weakestSubject} focused attention and revisits ${analytics.weakTopics[0] || 'recent mistakes'} without overloading you.`,
-        daily_motivation: 'One well-used study block today is a brick in your professional foundation.', daily_focus: analytics.weakestSubject,
-        reflection_prompt: 'What helped your focus today, and what should tomorrow change?',
-        recommendations: { today_focus: analytics.weakestSubject, topics_to_review: analytics.weakTopics, topics_to_practice: [`${analytics.weakestSubject} mixed problems`], topics_improving: analytics.strongTopics, suggested_break_time: `${profile.break_duration || 15} minutes`, sleep_reminder: `Wind down by ${profile.bed_time}` }, performance_analysis: analytics,
+        ai_summary: fallbackSummaries[fallbackVariant % fallbackSummaries.length],
+        daily_motivation: fallbackMotivation, daily_focus: analytics.weakestSubject,
+        reflection_prompt: fallbackVariant % 2 ? 'Which practice format felt most useful today?' : 'What helped your focus today, and what should tomorrow change?',
+        recommendations: { today_focus: analytics.weakestSubject, topics_to_review: analytics.weakTopics, topics_to_practice: [`${analytics.weakestSubject} mixed problems`], topics_improving: analytics.strongTopics, study_tip: 'Attempt a problem before checking the solution.', suggested_break_time: `${profile.break_duration || 15} minutes`, sleep_reminder: `Wind down by ${profile.bed_time}` }, performance_analysis: analytics,
       };
       toast({
         title: 'AI service unavailable, using local plan',
@@ -266,8 +283,6 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
     // commitment or repeat the previous day's study order.
     const candidateOrder = (result.tasks || []).filter(task => task.type === 'study').map(task => task.subject).filter(Boolean);
     const candidateMinutes = (result.tasks || []).filter(task => task.type === 'study').reduce((sum, task) => sum + Number(task.duration_minutes || 0), 0);
-    const previousRecord = priorSchedules.filter(record => record.date < selectedDate)
-      .sort((a, b) => String(a.date).localeCompare(String(b.date))).at(-1);
     if (candidateMinutes !== requiredStudyMinutes || previousRecord?.subject_order?.join('|') === candidateOrder.join('|')) {
       result.tasks = buildAdaptiveFallback(profile, selectedDate, manualTasks, analytics, priorSchedules.filter(item => item.date === selectedDate).length + 1, requiredStudyMinutes);
     }
@@ -300,7 +315,7 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
     const record = await firebaseApi.entities.DailyAISchedule.create({
       user_id: user.id, date: selectedDate, generation_number: priorSchedules.filter(item => item.date === selectedDate).length + 1,
       ai_summary: result.ai_summary || '', daily_motivation: result.daily_motivation || '', daily_focus: result.daily_focus || analytics.weakestSubject,
-      reflection_prompt: result.reflection_prompt || '', reflection: analytics.yesterdaySummary.reflection || '', recommendations: result.recommendations || {}, performance_analysis: result.performance_analysis || analytics,
+      reflection_prompt: result.reflection_prompt || '', recommendations: result.recommendations || {}, performance_analysis: result.performance_analysis || analytics,
       schedule: newTasks, subject_order: newTasks.filter(task => task.type === 'study').map(task => task.subject), study_minutes: requiredStudyMinutes,
     });
     setCoachRecord(record);
@@ -410,6 +425,7 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
             <div><p className="text-xs text-muted-foreground">Review</p><p className="font-medium">{(coachRecord.recommendations?.topics_to_review || []).join(', ') || 'Continue spaced review'}</p></div>
             <div><p className="text-xs text-muted-foreground">Practice</p><p className="font-medium">{(coachRecord.recommendations?.topics_to_practice || []).join(', ') || 'Mixed CELE problems'}</p></div>
             <div><p className="text-xs text-muted-foreground">Already improving</p><p className="font-medium">{(coachRecord.recommendations?.topics_improving || []).join(', ') || 'Progress will appear as you study'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Study tip</p><p className="font-medium">{coachRecord.recommendations?.study_tip || 'Use active recall before reviewing notes'}</p></div>
             <div><p className="text-xs text-muted-foreground">Break reminder</p><p className="font-medium">{coachRecord.recommendations?.suggested_break_time || 'Take short recovery breaks'}</p></div>
             <div><p className="text-xs text-muted-foreground">Sleep reminder</p><p className="font-medium">{coachRecord.recommendations?.sleep_reminder || 'Protect your sleep routine'}</p></div>
           </div>
