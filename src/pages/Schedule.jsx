@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Component, useState, useEffect, useCallback } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
 import { Button } from '@/components/ui/button';
-import { format, addDays, parseISO, differenceInCalendarDays } from 'date-fns';
+import { format, addDays, parseISO, differenceInCalendarDays, isValid } from 'date-fns';
 import { motion } from 'framer-motion';
 import { Sparkles, ChevronLeft, ChevronRight, Check, SkipForward, Clock, Loader2, CalendarDays, List, Plus, Edit2, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -110,11 +110,51 @@ const typeColor = {
   reflection: 'bg-pink-500', sleep: 'bg-indigo-500', wake_up: 'bg-yellow-500', other: 'bg-gray-500'
 };
 
+const asArray = (value) => Array.isArray(value) ? value : [];
+
+class ScheduleErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('[schedule] render error prevented', { error, info });
+  }
+
+  componentDidUpdate(previousProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.hasError) this.setState({ hasError: false });
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div className="glass-card p-8 text-center">
+        <h2 className="text-xl font-semibold">Schedule unavailable</h2>
+        <p className="mt-2 text-sm text-muted-foreground">This day could not be displayed. Choose another date or refresh the page.</p>
+      </div>
+    );
+  }
+}
+
 export default function Schedule() {
+  return (
+    <ScheduleErrorBoundary>
+      <ScheduleContent />
+    </ScheduleErrorBoundary>
+  );
+}
+
+function ScheduleContent() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [tasks, setTasks] = useState([]);
+  const [loadedTaskDate, setLoadedTaskDate] = useState(null);
   const [allTasks, setAllTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -122,6 +162,7 @@ export default function Schedule() {
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [coachRecord, setCoachRecord] = useState(null);
+  const [selectedSchedule, setSelectedSchedule] = useState(null);
   const { toast } = useToast();
   const { triggerAchievement } = useAchievement();
 
@@ -138,14 +179,22 @@ export default function Schedule() {
 
   const loadTasks = useCallback(async () => {
     if (!user) return;
-    const items = await firebaseApi.entities.StudyTask.filter({ user_id: user.id, date: selectedDate });
-    setTasks(items.sort((a, b) => (a.time_start || '').localeCompare(b.time_start || '')));
+    try {
+      const items = await firebaseApi.entities.StudyTask.filter({ user_id: user.id, date: selectedDate });
+      const safeTasks = asArray(items).filter(Boolean).sort((a, b) => (a.time_start || '').localeCompare(b.time_start || ''));
+      setTasks(safeTasks);
+    } catch (error) {
+      console.error('[schedule] failed to load tasks', { selectedDate, error });
+      setTasks([]);
+    } finally {
+      setLoadedTaskDate(selectedDate);
+    }
   }, [user, selectedDate]);
 
   const loadAllTasks = useCallback(async () => {
     if (!user) return;
     const items = await firebaseApi.entities.StudyTask.filter({ user_id: user.id });
-    setAllTasks(items);
+    setAllTasks(asArray(items).filter(Boolean));
   }, [user]);
 
   useEffect(() => { if (user) loadAllTasks(); }, [user, loadAllTasks]);
@@ -153,8 +202,26 @@ export default function Schedule() {
   useEffect(() => {
     if (!user) return;
     firebaseApi.entities.DailyAISchedule.filter({ user_id: user.id, date: selectedDate })
-      .then(records => setCoachRecord(records.at(-1) || null))
-      .catch(() => setCoachRecord(null));
+      .then((records) => {
+        const matchingRecord = asArray(records).filter(record => record?.date === selectedDate).slice(-1)[0] || null;
+        const validSchedule = matchingRecord && Array.isArray(matchingRecord.tasks ?? matchingRecord.schedule) ? matchingRecord : null;
+        const date = parseISO(selectedDate);
+        console.info('[schedule] selected day loaded', {
+          selectedDate,
+          selectedWeekday: isValid(date) ? format(date, 'EEEE') : 'Invalid date',
+          firestoreDocumentId: matchingRecord?.id || null,
+          scheduleFound: Boolean(validSchedule),
+          taskCount: asArray(validSchedule?.tasks ?? validSchedule?.schedule).length,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+        setSelectedSchedule(validSchedule);
+        setCoachRecord(matchingRecord);
+      })
+      .catch((error) => {
+        console.error('[schedule] failed to load selected day', { selectedDate, error });
+        setSelectedSchedule(null);
+        setCoachRecord(null);
+      });
   }, [user, selectedDate]);
 
   const generateSchedule = async () => {
@@ -381,6 +448,16 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
     );
   }
 
+  const dayTasks = loadedTaskDate === selectedDate ? asArray(tasks).filter(Boolean) : [];
+  const matchingSelectedSchedule = selectedSchedule?.date === selectedDate ? selectedSchedule : null;
+  const storedScheduleTasks = asArray(matchingSelectedSchedule?.tasks ?? matchingSelectedSchedule?.schedule);
+  const hasStoredSchedule = Boolean(matchingSelectedSchedule && Array.isArray(matchingSelectedSchedule.tasks ?? matchingSelectedSchedule.schedule));
+  const hasSchedule = dayTasks.length > 0 || (hasStoredSchedule && storedScheduleTasks.length > 0);
+  const displayTasks = dayTasks.length > 0 ? dayTasks : storedScheduleTasks;
+  const visibleCoachRecord = coachRecord?.date === selectedDate ? coachRecord : null;
+  const recommendations = visibleCoachRecord?.recommendations && typeof visibleCoachRecord.recommendations === 'object' && !Array.isArray(visibleCoachRecord.recommendations)
+    ? coachRecord.recommendations : {};
+
   return (
     <div className="space-y-6">
       <ManualTaskDialog
@@ -412,24 +489,24 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
         </div>
       </div>
 
-      {coachRecord && (
+      {visibleCoachRecord && (
         <section className="glass-card p-5 border border-primary/20">
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="w-4 h-4 text-primary" />
             <h2 className="font-semibold">AI Coach Summary</h2>
           </div>
-          <p className="text-sm leading-6 text-muted-foreground">{coachRecord.ai_summary}</p>
-          {coachRecord.daily_motivation && <p className="mt-3 text-sm font-medium text-primary">“{coachRecord.daily_motivation}”</p>}
+          <p className="text-sm leading-6 text-muted-foreground">{typeof visibleCoachRecord.ai_summary === 'string' ? visibleCoachRecord.ai_summary : ''}</p>
+          {typeof visibleCoachRecord.daily_motivation === 'string' && visibleCoachRecord.daily_motivation && <p className="mt-3 text-sm font-medium text-primary">“{visibleCoachRecord.daily_motivation}”</p>}
           <div className="grid gap-3 mt-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            <div><p className="text-xs text-muted-foreground">Today’s focus</p><p className="font-medium">{coachRecord.recommendations?.today_focus || coachRecord.daily_focus}</p></div>
-            <div><p className="text-xs text-muted-foreground">Review</p><p className="font-medium">{(coachRecord.recommendations?.topics_to_review || []).join(', ') || 'Continue spaced review'}</p></div>
-            <div><p className="text-xs text-muted-foreground">Practice</p><p className="font-medium">{(coachRecord.recommendations?.topics_to_practice || []).join(', ') || 'Mixed CELE problems'}</p></div>
-            <div><p className="text-xs text-muted-foreground">Already improving</p><p className="font-medium">{(coachRecord.recommendations?.topics_improving || []).join(', ') || 'Progress will appear as you study'}</p></div>
-            <div><p className="text-xs text-muted-foreground">Study tip</p><p className="font-medium">{coachRecord.recommendations?.study_tip || 'Use active recall before reviewing notes'}</p></div>
-            <div><p className="text-xs text-muted-foreground">Break reminder</p><p className="font-medium">{coachRecord.recommendations?.suggested_break_time || 'Take short recovery breaks'}</p></div>
-            <div><p className="text-xs text-muted-foreground">Sleep reminder</p><p className="font-medium">{coachRecord.recommendations?.sleep_reminder || 'Protect your sleep routine'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Today’s focus</p><p className="font-medium">{recommendations.today_focus || visibleCoachRecord.daily_focus}</p></div>
+            <div><p className="text-xs text-muted-foreground">Review</p><p className="font-medium">{asArray(recommendations.topics_to_review).join(', ') || 'Continue spaced review'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Practice</p><p className="font-medium">{asArray(recommendations.topics_to_practice).join(', ') || 'Mixed CELE problems'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Already improving</p><p className="font-medium">{asArray(recommendations.topics_improving).join(', ') || 'Progress will appear as you study'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Study tip</p><p className="font-medium">{recommendations.study_tip || 'Use active recall before reviewing notes'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Break reminder</p><p className="font-medium">{recommendations.suggested_break_time || 'Take short recovery breaks'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Sleep reminder</p><p className="font-medium">{recommendations.sleep_reminder || 'Protect your sleep routine'}</p></div>
           </div>
-          {coachRecord.reflection_prompt && <p className="mt-4 text-xs text-muted-foreground">Reflection: {coachRecord.reflection_prompt}</p>}
+          {typeof visibleCoachRecord.reflection_prompt === 'string' && visibleCoachRecord.reflection_prompt && <p className="mt-4 text-xs text-muted-foreground">Reflection: {visibleCoachRecord.reflection_prompt}</p>}
         </section>
       )}
 
@@ -439,10 +516,10 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
           <ScheduleCalendar tasks={allTasks} selectedDate={selectedDate} onSelectDate={(d) => { setSelectedDate(d); setViewMode('day'); }} />
           <div className="glass-card p-4">
             <h3 className="text-sm font-semibold mb-2">Tasks on {format(parseISO(selectedDate), 'MMMM d')}</h3>
-            {tasks.length === 0 ? (
+            {dayTasks.length === 0 ? (
               <p className="text-sm text-muted-foreground">No tasks scheduled.</p>
             ) : (
-              <p className="text-sm text-muted-foreground">{tasks.length} tasks — {tasks.filter(t => t.completed).length} completed</p>
+              <p className="text-sm text-muted-foreground">{dayTasks.length} tasks — {dayTasks.filter(t => t.completed).length} completed</p>
             )}
           </div>
         </>
@@ -464,15 +541,18 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
             </button>
           </div>
 
-          {tasks.length === 0 ? (
+          {!hasSchedule ? (
             <div className="glass-card p-8 text-center">
               <Clock className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">No schedule for this day</p>
-              <p className="text-sm text-muted-foreground mt-1">Click "AI Generate" or add a manual task</p>
+              <h2 className="text-lg font-semibold">No Schedule Yet</h2>
+              <p className="text-sm text-muted-foreground mt-1">There is no schedule available for this day.</p>
+              <Button onClick={generateSchedule} disabled={generating} className="mt-4">
+                {generating ? 'Generating...' : 'Generate Schedule'}
+              </Button>
             </div>
           ) : (
             <div className="space-y-2">
-              {tasks.map((task, i) => (
+              {displayTasks.map((task, i) => (
                 <motion.div
                   key={task.id}
                   initial={{ opacity: 0, y: 10 }}
