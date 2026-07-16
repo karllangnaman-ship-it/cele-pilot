@@ -157,6 +157,10 @@ const buildEntityMap = () => ({
   TimerHistory: getEntityApi('timerHistories'),
   Notification: getEntityApi('notifications'),
   FlashcardSession: getEntityApi('flashcardSessions'),
+  // One immutable coaching snapshot per generated day.  Keeping these separate
+  // from tasks lets the next plan learn from history even after a regeneration.
+  DailyAISchedule: getEntityApi('dailyAiSchedules'),
+  DailyReview: getEntityApi('dailyReviews'),
 });
 
 const getGeminiErrorMessage = async (response) => {

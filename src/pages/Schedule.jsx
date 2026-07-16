@@ -10,6 +10,7 @@ import ScheduleCalendar from '@/components/ScheduleCalendar';
 import { useAchievement } from '@/components/AchievementProvider';
 import ManualTaskDialog from '@/components/ManualTaskDialog';
 import { COLOR_CLASSES, PRIORITY_COLORS } from '@/lib/cele-subjects';
+import { buildAdaptiveFallback, buildLearningAnalytics } from '@/lib/adaptiveSchedule';
 
 const buildFallbackSchedule = (profile, selectedDate, manualSlots) => {
   const start = profile?.wake_up_time ? profile.wake_up_time : '06:00';
@@ -120,6 +121,7 @@ export default function Schedule() {
   const [viewMode, setViewMode] = useState('day');
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [coachRecord, setCoachRecord] = useState(null);
   const { toast } = useToast();
   const { triggerAchievement } = useAchievement();
 
@@ -148,6 +150,12 @@ export default function Schedule() {
 
   useEffect(() => { if (user) loadAllTasks(); }, [user, loadAllTasks]);
   useEffect(() => { if (user) loadTasks(); }, [user, selectedDate, loadTasks]);
+  useEffect(() => {
+    if (!user) return;
+    firebaseApi.entities.DailyAISchedule.filter({ user_id: user.id, date: selectedDate })
+      .then(records => setCoachRecord(records.at(-1) || null))
+      .catch(() => setCoachRecord(null));
+  }, [user, selectedDate]);
 
   const generateSchedule = async () => {
     if (!profile?.completed) {
@@ -155,11 +163,20 @@ export default function Schedule() {
       return;
     }
     setGenerating(true);
-
-    const completedTasks = await firebaseApi.entities.StudyTask.filter({ user_id: user.id, completed: true });
-    const skippedTasks = await firebaseApi.entities.StudyTask.filter({ user_id: user.id, skipped: true });
+    try {
+    const [historyTasks, timerHistory, flashcardSessions, notes, reviews, priorSchedules] = await Promise.all([
+      firebaseApi.entities.StudyTask.filter({ user_id: user.id }), firebaseApi.entities.TimerHistory.filter({ user_id: user.id }),
+      firebaseApi.entities.FlashcardSession.filter({ user_id: user.id }), firebaseApi.entities.StudyNote.filter({ user_id: user.id }),
+      firebaseApi.entities.DailyReview.filter({ user_id: user.id }), firebaseApi.entities.DailyAISchedule.filter({ user_id: user.id }),
+    ]);
+    const analytics = buildLearningAnalytics({ profile, tasks: historyTasks, timerHistory, flashcardSessions, notes, reviews, selectedDate });
     const manualTasks = allTasks.filter(t => t.is_manual && t.date === selectedDate);
     const manualSlots = manualTasks.map(t => `- ${t.time_start}-${t.time_end}: ${t.title}`).join('\n') || 'None';
+    const currentPlan = historyTasks.filter(task => task.date === selectedDate && !task.is_manual);
+    const requiredStudyMinutes = currentPlan.length
+      ? currentPlan.filter(task => task.type === 'study').reduce((sum, task) => sum + Number(task.duration_minutes || 0), 0)
+      : Math.round(Number(profile.available_hours || 6) * 60);
+    const recentOrders = priorSchedules.slice(-4).map(record => record.subject_order || []);
 
     const prompt = `You are a CELE (Civil Engineering Licensure Examination) review planner AI. Generate a personalized study schedule for ${selectedDate}.
 
@@ -182,25 +199,30 @@ Student Profile:
 Manual tasks already scheduled for this day (DO NOT create study sessions that overlap these time slots):
 ${manualSlots}
 
-Previously completed tasks: ${completedTasks.length}
-Previously skipped tasks: ${skippedTasks.length}
+Learning analytics (these are required inputs, not optional context):
+- Yesterday: ${analytics.yesterdaySummary.completedTasks} completed, ${analytics.yesterdaySummary.missedTasks} missed, ${analytics.yesterdaySummary.actualMinutes}/${analytics.yesterdaySummary.plannedMinutes} study minutes; subjects ${analytics.yesterdaySummary.subjects.join(', ') || 'none'}; mood ${analytics.yesterdaySummary.mood || 'not recorded'}; notes ${analytics.yesterdaySummary.noteCount}
+- Overall: ${analytics.completionRate}% completion, ${analytics.reviewStreak}-day review streak, ${analytics.averageStudyDuration}-minute average study session, ${analytics.flashcardSuccessRate}% flashcard success
+- Weakest/strongest subject: ${analytics.weakestSubject}/${analytics.strongestSubject}; weak topics and mistakes: ${analytics.weakTopics.join(', ') || 'none recorded'}; improving topics: ${analytics.strongTopics.join(', ') || 'none recorded'}
+- Previous reflection: ${analytics.yesterdaySummary.reflection || 'none recorded'}
+- Recent subject orders (must not duplicate): ${JSON.stringify(recentOrders)}
+- ${currentPlan.length ? `REGENERATION: retain exactly ${requiredStudyMinutes} study minutes while changing task sequence, subject order, practice formats, coach notes, and motivation.` : `NEW SCHEDULE: plan exactly ${requiredStudyMinutes} study minutes.`}
 
 Rules:
 - Distribute subjects (MSTE, HGE, PSAD) based on confidence. Lower confidence = more study time.
 - PRIORITIZE weak topics by allocating additional study sessions. Use lighter review for strong topics.
 - Balance study sessions across MSTE, HGE, and PSAD to ensure all subjects are reviewed before the exam.
-- Adapt the plan based on performance: if the user has many skipped tasks (${skippedTasks.length} skipped so far), reschedule unfinished sessions intelligently without creating conflicts.
+- Adapt to performance: revisit recent mistakes using spaced repetition, reduce mastered-topic time, and add a recovery day/lighter blocks when completion or mood indicates fatigue.
 - Consider the user's learning style (${profile.learning_style}), study preference (${profile.study_preference}), and focus ability (${profile.focus_ability}).
 - Ensure weaker subjects get priority while maintaining coverage of all topics.
-- Continuously improve future schedules using the user's study habits (completed: ${completedTasks.length}, skipped: ${skippedTasks.length}).
+- Never use a fixed routine or duplicate a recent subject order. Rotate subjects and mix focused study, timed practice, review, and flashcards.
 - Do NOT schedule anything during manual task time slots.
 - Respect wake-up time and bedtime.
 - Include wake up, meals, breaks, exercise, flashcard reviews, reflection, and sleep.
 - Use ${profile.session_duration}-minute study sessions.
 - Make it realistic and balanced. Do not use a fixed template.
-- Each task needs: title, subject (MSTE/HGE/PSAD or empty for non-study), type (study/break/meal/exercise/flashcard/review/reflection/sleep/wake_up/other), time_start (HH:MM), time_end (HH:MM), duration_minutes.
+- Each task needs: title, subject (MSTE/HGE/PSAD or empty for non-study), type (study/break/meal/exercise/flashcard/review/reflection/sleep/wake_up/other), time_start (HH:MM), time_end (HH:MM), duration_minutes, topic.
 
-Return a JSON object with a "tasks" array.`;
+Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_motivation (original short sentence), daily_focus, reflection_prompt, recommendations {today_focus, topics_to_review, topics_to_practice, topics_improving, suggested_break_time, sleep_reminder}, and performance_analysis.`;
 
     let result;
     try {
@@ -219,19 +241,35 @@ Return a JSON object with a "tasks" array.`;
                   type: { type: "string" },
                   time_start: { type: "string" },
                   time_end: { type: "string" },
-                  duration_minutes: { type: "number" }
+                  duration_minutes: { type: "number" }, topic: { type: "string" }
                 }
               }
-            }
+            }, ai_summary: { type: "string" }, daily_motivation: { type: "string" }, daily_focus: { type: "string" }, reflection_prompt: { type: "string" }, recommendations: { type: "object" }, performance_analysis: { type: "object" }
           }
         }
       });
     } catch (error) {
-      result = { tasks: buildFallbackSchedule(profile, selectedDate, manualSlots) };
+      result = {
+        tasks: buildAdaptiveFallback(profile, selectedDate, manualTasks, analytics, priorSchedules.filter(item => item.date === selectedDate).length, requiredStudyMinutes),
+        ai_summary: `Yesterday you completed ${analytics.yesterdaySummary.completionRate}% of planned tasks. Today gives ${analytics.weakestSubject} focused attention and revisits ${analytics.weakTopics[0] || 'recent mistakes'} without overloading you.`,
+        daily_motivation: 'One well-used study block today is a brick in your professional foundation.', daily_focus: analytics.weakestSubject,
+        reflection_prompt: 'What helped your focus today, and what should tomorrow change?',
+        recommendations: { today_focus: analytics.weakestSubject, topics_to_review: analytics.weakTopics, topics_to_practice: [`${analytics.weakestSubject} mixed problems`], topics_improving: analytics.strongTopics, suggested_break_time: `${profile.break_duration || 15} minutes`, sleep_reminder: `Wind down by ${profile.bed_time}` }, performance_analysis: analytics,
+      };
       toast({
         title: 'AI service unavailable, using local plan',
         description: 'A fallback schedule was created based on your saved profile.',
       });
+    }
+
+    // Generation can be creative, but it cannot change the student's time
+    // commitment or repeat the previous day's study order.
+    const candidateOrder = (result.tasks || []).filter(task => task.type === 'study').map(task => task.subject).filter(Boolean);
+    const candidateMinutes = (result.tasks || []).filter(task => task.type === 'study').reduce((sum, task) => sum + Number(task.duration_minutes || 0), 0);
+    const previousRecord = priorSchedules.filter(record => record.date < selectedDate)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date))).at(-1);
+    if (candidateMinutes !== requiredStudyMinutes || previousRecord?.subject_order?.join('|') === candidateOrder.join('|')) {
+      result.tasks = buildAdaptiveFallback(profile, selectedDate, manualTasks, analytics, priorSchedules.filter(item => item.date === selectedDate).length + 1, requiredStudyMinutes);
     }
 
     // Delete existing AI tasks for this date (keep manual tasks)
@@ -249,6 +287,7 @@ Return a JSON object with a "tasks" array.`;
       time_start: t.time_start,
       time_end: t.time_end,
       duration_minutes: t.duration_minutes || 30,
+      topic: t.topic || '',
       completed: false,
       skipped: false,
       is_manual: false,
@@ -258,10 +297,22 @@ Return a JSON object with a "tasks" array.`;
       await firebaseApi.entities.StudyTask.bulkCreate(newTasks);
     }
 
-    setGenerating(false);
+    const record = await firebaseApi.entities.DailyAISchedule.create({
+      user_id: user.id, date: selectedDate, generation_number: priorSchedules.filter(item => item.date === selectedDate).length + 1,
+      ai_summary: result.ai_summary || '', daily_motivation: result.daily_motivation || '', daily_focus: result.daily_focus || analytics.weakestSubject,
+      reflection_prompt: result.reflection_prompt || '', reflection: analytics.yesterdaySummary.reflection || '', recommendations: result.recommendations || {}, performance_analysis: result.performance_analysis || analytics,
+      schedule: newTasks, subject_order: newTasks.filter(task => task.type === 'study').map(task => task.subject), study_minutes: requiredStudyMinutes,
+    });
+    setCoachRecord(record);
+
     loadTasks();
     loadAllTasks();
     triggerAchievement(`schedule_generated_${selectedDate}`, undefined, `Your personalized CELE study plan for ${format(parseISO(selectedDate), 'MMMM d')} is ready!`);
+    } catch (error) {
+      toast({ title: 'Unable to generate schedule', description: error.message || 'Please try again.', variant: 'destructive' });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const toggleComplete = async (task) => {
@@ -345,6 +396,26 @@ Return a JSON object with a "tasks" array.`;
           </Button>
         </div>
       </div>
+
+      {coachRecord && (
+        <section className="glass-card p-5 border border-primary/20">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            <h2 className="font-semibold">AI Coach Summary</h2>
+          </div>
+          <p className="text-sm leading-6 text-muted-foreground">{coachRecord.ai_summary}</p>
+          {coachRecord.daily_motivation && <p className="mt-3 text-sm font-medium text-primary">“{coachRecord.daily_motivation}”</p>}
+          <div className="grid gap-3 mt-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <div><p className="text-xs text-muted-foreground">Today’s focus</p><p className="font-medium">{coachRecord.recommendations?.today_focus || coachRecord.daily_focus}</p></div>
+            <div><p className="text-xs text-muted-foreground">Review</p><p className="font-medium">{(coachRecord.recommendations?.topics_to_review || []).join(', ') || 'Continue spaced review'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Practice</p><p className="font-medium">{(coachRecord.recommendations?.topics_to_practice || []).join(', ') || 'Mixed CELE problems'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Already improving</p><p className="font-medium">{(coachRecord.recommendations?.topics_improving || []).join(', ') || 'Progress will appear as you study'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Break reminder</p><p className="font-medium">{coachRecord.recommendations?.suggested_break_time || 'Take short recovery breaks'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Sleep reminder</p><p className="font-medium">{coachRecord.recommendations?.sleep_reminder || 'Protect your sleep routine'}</p></div>
+          </div>
+          {coachRecord.reflection_prompt && <p className="mt-4 text-xs text-muted-foreground">Reflection: {coachRecord.reflection_prompt}</p>}
+        </section>
+      )}
 
       {/* Month calendar view */}
       {viewMode === 'month' && (
