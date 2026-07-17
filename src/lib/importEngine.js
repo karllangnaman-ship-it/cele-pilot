@@ -1,7 +1,7 @@
 import { normalizeSpreadsheetRow } from '@/lib/spreadsheetImport';
 
-const formulaFields = ['name', 'subject', 'topic', 'formula'];
-const questionFields = ['subject', 'topic', 'difficulty', 'question', 'choices', 'correctAnswer', 'explanation'];
+const formulaFields = ['subject', 'name', 'formula'];
+const questionFields = ['subject', 'question', 'correctAnswer'];
 
 export const blankFormula = () => ({ name: '', subject: '', topic: '', subtopic: '', formula: '', description: '', variables: '', units: '', conditions: '', applications: '', exampleProblem: '', solution: '', finalAnswer: '', commonMistakes: '', relatedFormulas: '', references: '', tags: '', sourceType: 'manual', visibility: 'private' });
 export const blankQuestion = () => ({ subject: '', topic: '', difficulty: 'medium', question: '', choices: ['', '', '', ''], correctAnswer: '', explanation: '', formulaReferences: '', tags: '', boardYear: '', source: '', imageUrl: null, figureLabel: '', situationId: null, situationKey: '', situationTitle: '', situationDescription: '', questionNumber: '', sourceType: 'manual', visibility: 'private', confidence: 1 });
@@ -28,6 +28,6 @@ export function mapSpreadsheetRow(row, type) {
 }
 
 export function spreadsheetValidationReasons(item, type) {
-  if (type !== 'formula') { const reasons = validateItem(item, type).missing.map((field) => `Missing required field: ${field}`); if (item.imageUrl && !/^https?:\/\/\S+$/i.test(item.imageUrl)) reasons.push('Image URL must use HTTP or HTTPS'); return reasons; }
-  const reasons = []; if (!String(item.name || '').trim()) reasons.push('Missing required field: name'); if (!String(item.subject || '').trim()) reasons.push('Missing required field: subject'); if (!String(item.topic || '').trim()) reasons.push('Missing required field: category'); if (!String(item.formula || '').trim()) reasons.push('Formula is empty'); return reasons;
+  if (type !== 'formula') return validateItem(item, type).missing.map((field) => `Missing required field: ${field}`);
+  return validateItem(item, type).missing.map((field) => `Missing required field: ${field}`);
 }

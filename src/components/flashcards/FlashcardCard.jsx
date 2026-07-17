@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Star, Pin } from 'lucide-react';
+import { LatexText } from '@/components/LatexFormula';
 
 const SUBJECT_COLORS = {
   MSTE: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
@@ -59,8 +60,8 @@ export default function FlashcardCard({ card, onEdit, onToggleFavorite, onToggle
           </button>
         </div>
       </div>
-      <p className="text-sm font-medium line-clamp-2 mb-1">{card.question}</p>
-      <p className="text-xs text-muted-foreground line-clamp-2">{card.answer}</p>
+      <div className="text-sm font-medium line-clamp-2 mb-1"><LatexText value={card.question} /></div>
+      <div className="text-xs text-muted-foreground line-clamp-2"><LatexText value={card.answer} /></div>
       <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/50">
         <span className="text-[10px] text-muted-foreground">Reviewed {card.times_reviewed || 0}×</span>
         {card.mastered && <span className="text-[10px] text-green-500 font-medium">Mastered</span>}
