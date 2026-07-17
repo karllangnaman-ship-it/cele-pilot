@@ -199,6 +199,7 @@ const studyHistory = {
       const queued = readStudyHistoryQueue(uid).filter((item) => item.id !== id);
       writeStudyHistoryQueue(uid, queued);
     } catch (error) {
+      console.error('Failed to save study history session; queued for retry.', error);
       // Keep one entry per id. setDoc with this same id makes subsequent syncs
       // idempotent, including after an app reload.
       const queued = readStudyHistoryQueue(uid);
@@ -209,38 +210,53 @@ const studyHistory = {
     return payload;
   },
   async flushPending() {
-    const uid = await getUserId();
-    const queued = readStudyHistoryQueue(uid);
-    for (const record of queued) {
-      await firestoreSetDoc(getUserDocRef(uid, 'studyHistory', record.id), {
-        ...record,
-        userId: uid,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+    try {
+      const uid = await getUserId();
+      const queued = readStudyHistoryQueue(uid);
+      for (const record of queued) {
+        await firestoreSetDoc(getUserDocRef(uid, 'studyHistory', record.id), {
+          ...record,
+          userId: uid,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+      writeStudyHistoryQueue(uid, []);
+    } catch (error) {
+      console.error('Failed to synchronize pending study history sessions.', error);
+      throw error;
     }
-    writeStudyHistoryQueue(uid, []);
   },
   async getPage({ pageSize = 25, cursor = null } = {}) {
-    const uid = await getUserId();
-    const historyRef = getUserCollectionRef(uid, 'studyHistory');
-    const historyQuery = cursor
-      ? query(historyRef, orderBy('startTime', 'desc'), startAfter(cursor), limit(pageSize))
-      : query(historyRef, orderBy('startTime', 'desc'), limit(pageSize));
-    const snapshot = await getDocs(historyQuery);
-    return {
-      records: snapshot.docs.map(toHistoryRecord),
-      cursor: snapshot.docs.at(-1) || null,
-      hasMore: snapshot.docs.length === pageSize,
-    };
+    try {
+      const uid = await getUserId();
+      const historyRef = getUserCollectionRef(uid, 'studyHistory');
+      const historyQuery = cursor
+        ? query(historyRef, orderBy('startTime', 'desc'), startAfter(cursor), limit(pageSize))
+        : query(historyRef, orderBy('startTime', 'desc'), limit(pageSize));
+      const snapshot = await getDocs(historyQuery);
+      return {
+        records: snapshot.docs.map(toHistoryRecord),
+        cursor: snapshot.docs.at(-1) || null,
+        hasMore: snapshot.docs.length === pageSize,
+      };
+    } catch (error) {
+      console.error('Failed to load study history page.', error);
+      throw error;
+    }
   },
   subscribe(callback, pageSize = 50) {
     const uid = auth.currentUser?.uid;
     if (!uid) return () => {};
-    return onSnapshot(
-      query(getUserCollectionRef(uid, 'studyHistory'), orderBy('startTime', 'desc'), limit(pageSize)),
-      (snapshot) => callback(snapshot.docs.map(toHistoryRecord)),
-      () => callback([]),
-    );
+    try {
+      return onSnapshot(
+        query(getUserCollectionRef(uid, 'studyHistory'), orderBy('startTime', 'desc'), limit(pageSize)),
+        (snapshot) => callback(snapshot.docs.map(toHistoryRecord)),
+        (error) => { console.error('Study history realtime subscription failed.', error); callback([]); },
+      );
+    } catch (error) {
+      console.error('Unable to start study history realtime subscription.', error);
+      return () => {};
+    }
   },
 };
 
