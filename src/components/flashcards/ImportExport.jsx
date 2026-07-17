@@ -22,11 +22,11 @@ const configs = {
   },
   formula: {
     title: 'Formula Library', entity: firebaseApi.entities.Formula, filename: 'formula-library',
-    columns: ['Subject', 'Category', 'Formula Name', 'Formula', 'Description', 'Tags'],
-    sample: [{ Subject: 'PSAD', Category: 'Mechanics of Materials', 'Formula Name': 'Stress', Formula: 'σ=P/A', Description: 'Normal stress.', Tags: 'stress, mechanics' }, { Subject: 'MSTE', Category: 'Geometry', 'Formula Name': 'Area', Formula: 'A=πr²', Description: 'Area of a circle.', Tags: 'area, geometry' }],
-    description: 'Import formulas with their subject, category, and tags.',
+    columns: ['Subject', 'Folder', 'Sub Folder', 'Formula Name', 'Formula', 'Description', 'Remarks', 'Figure URL', 'Reference', 'Tags', 'Difficulty', 'Variable Symbol 1', 'Variable Meaning 1', 'Variable Unit 1', 'Variable Symbol 2', 'Variable Meaning 2', 'Variable Unit 2', 'Variable Symbol 3', 'Variable Meaning 3', 'Variable Unit 3', 'Variable Symbol 4', 'Variable Meaning 4', 'Variable Unit 4', 'Variable Symbol 5', 'Variable Meaning 5', 'Variable Unit 5'],
+    sample: [{ Subject: 'PSAD', Folder: 'Stress Analysis', 'Sub Folder': 'Axial Stress', 'Formula Name': 'Normal Stress', Formula: 'σ=P/A', Description: 'Normal stress due to axial loading.', Remarks: '', 'Figure URL': '', Reference: 'Mechanics of Materials', Tags: 'stress, mechanics', Difficulty: 'easy', 'Variable Symbol 1': 'σ', 'Variable Meaning 1': 'Normal Stress', 'Variable Unit 1': 'MPa', 'Variable Symbol 2': 'P', 'Variable Meaning 2': 'Axial Load', 'Variable Unit 2': 'N', 'Variable Symbol 3': 'A', 'Variable Meaning 3': 'Cross-sectional Area', 'Variable Unit 3': 'mm²' }],
+    description: 'Only Subject, Formula Name, and Formula are required; all other formula fields are optional.',
     map: (row) => mapSpreadsheetRow(row, 'formula'), validate: (item) => spreadsheetValidationReasons(item, 'formula'),
-    export: (item) => ({ Subject: item.subject || '', Category: item.topic || '', 'Formula Name': item.name || '', Formula: item.formula || '', Description: item.description || '', Tags: Array.isArray(item.tags) ? item.tags.join(', ') : item.tags || '' }),
+    export: (item) => ({ Subject: item.subject || '', Folder: item.folder || item.topic || '', 'Sub Folder': item.subFolder || item.subtopic || '', 'Formula Name': item.name || '', Formula: item.formula || '', Description: item.description || '', Remarks: item.remarks || '', 'Figure URL': item.figureUrl || '', Reference: item.references || '', Tags: Array.isArray(item.tags) ? item.tags.join(', ') : item.tags || '', Difficulty: item.difficulty || '', ...Object.fromEntries(Array.from({ length: 5 }, (_, i) => { const n = i + 1; return [[`Variable Symbol ${n}`, item[`variableSymbol${n}`] || ''], [`Variable Meaning ${n}`, item[`variableMeaning${n}`] || ''], [`Variable Unit ${n}`, item[`variableUnit${n}`] || '']]; }).flat()) }),
     preview: ['Subject', 'Formula Name', 'Formula'],
   },
   question: {

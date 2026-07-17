@@ -160,6 +160,7 @@ const buildEntityMap = () => ({
   DailyAISchedule: getEntityApi('dailyAiSchedules'),
   DailyReview: getEntityApi('dailyReviews'),
   Formula: getEntityApi('formulas'),
+  FormulaFolder: getEntityApi('formulaFolders'),
   Question: getEntityApi('questions'),
   Situation: getEntityApi('situations'),
   Import: getEntityApi('imports'),

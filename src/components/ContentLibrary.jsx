@@ -14,12 +14,14 @@ import RemoteFigure from '@/components/RemoteFigure';
 import LatexFormula, { LatexText } from '@/components/LatexFormula';
 import SearchBar from '@/components/content/SearchBar';
 import SubjectFilter from '@/components/content/SubjectFilter';
+import FormulaLibrary from '@/components/FormulaLibrary';
 
 const formulaFields = [['subject', 'Subject'], ['topic', 'Topic'], ['subtopic', 'Subtopic'], ['name', 'Formula name'], ['formula', 'Formula (LaTeX supported)'], ['description', 'Description'], ['variables', 'Variables'], ['units', 'Units'], ['conditions', 'Conditions'], ['applications', 'Applications'], ['exampleProblem', 'Example problem'], ['solution', 'Complete solution'], ['finalAnswer', 'Final answer'], ['commonMistakes', 'Common mistakes'], ['relatedFormulas', 'Related formulas'], ['references', 'References'], ['tags', 'Tags (comma separated)']];
 const questionFields = [['subject', 'Subject'], ['topic', 'Topic'], ['difficulty', 'Difficulty'], ['questionNumber', 'Question number'], ['question', 'Question'], ['choices', 'Choices A-D (separate with |)'], ['correctAnswer', 'Correct answer'], ['explanation', 'Explanation'], ['figureLabel', 'Figure label'], ['imageUrl', 'Image URL (HTTP/HTTPS)'], ['tags', 'Tags (comma separated)']];
 const textAreas = new Set(['question', 'formula', 'description', 'explanation', 'solution', 'exampleProblem']);
 
 export default function ContentLibrary({ type }) {
+  if (type === 'formula') return <FormulaLibrary />;
   const isFormula = type === 'formula'; const Entity = isFormula ? firebaseApi.entities.Formula : firebaseApi.entities.Question; const singular = isFormula ? 'Formula' : 'Question'; const makeBlank = isFormula ? blankFormula : blankQuestion; const fields = isFormula ? formulaFields : questionFields;
   const [user, setUser] = useState(null); const [items, setItems] = useState([]); const [situations, setSituations] = useState([]); const [draft, setDraft] = useState(makeBlank()); const [editing, setEditing] = useState(null); const [mode, setMode] = useState('manual'); const [open, setOpen] = useState(false); const [search, setSearch] = useState(''); const [subjectFilter, setSubjectFilter] = useState('all'); const [busy, setBusy] = useState(false); const [preview, setPreview] = useState([]); const [ai, setAi] = useState({ subject: '', topic: '', difficulty: 'medium', count: 5 }); const { toast } = useToast();
   const load = async () => { const me = await firebaseApi.auth.me(); setUser(me); setItems(await Entity.filter({ user_id: me.id })); if (!isFormula) setSituations(await firebaseApi.entities.Situation.filter({ user_id: me.id })); };
