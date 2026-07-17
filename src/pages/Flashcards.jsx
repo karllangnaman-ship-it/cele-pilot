@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Sparkles, Loader2, Search, Star, Layers, BookOpen, BarChart3 } from 'lucide-react';
+import { Plus, Sparkles, Loader2, Star, Layers, BookOpen, BarChart3 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import FlashcardCard from '@/components/flashcards/FlashcardCard';
 import FlashcardEditor from '@/components/flashcards/FlashcardEditor';
@@ -15,6 +14,8 @@ import FlashcardStats from '@/components/flashcards/FlashcardStats';
 import UploadGenerator from '@/components/flashcards/UploadGenerator';
 import ImportExport from '@/components/flashcards/ImportExport';
 import StudySession from '@/components/flashcards/StudySession';
+import SearchBar from '@/components/content/SearchBar';
+import SubjectFilter from '@/components/content/SubjectFilter';
 
 const SUBJECTS = ['all', 'MSTE', 'HGE', 'PSAD'];
 const FILTERS = ['all', 'favorite', 'ai', 'manual', 'mastered', 'due'];
@@ -197,17 +198,8 @@ export default function Flashcards() {
         {tab === 'deck' && (
           <div className="space-y-4 mt-4">
             <div className="flex gap-2 flex-wrap items-center">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input placeholder="Search cards..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-              </div>
-              <div className="flex gap-1">
-                {SUBJECTS.map(f => (
-                  <Button key={f} variant={subjectFilter === f ? 'default' : 'outline'} size="sm" onClick={() => setSubjectFilter(f)}>
-                    {f === 'all' ? 'All' : f}
-                  </Button>
-                ))}
-              </div>
+              <SearchBar placeholder="Search cards..." value={search} onChange={setSearch} />
+              <SubjectFilter value={subjectFilter} onChange={setSubjectFilter} />
             </div>
             <div className="flex gap-1.5 flex-wrap">
               {FILTERS.map(f => (
