@@ -34,6 +34,7 @@ import Home from '@/pages/Home';
 import Survey from '@/pages/Survey';
 import Schedule from '@/pages/Schedule';
 import Timer from '@/pages/Timer';
+import StudyHistory from '@/pages/StudyHistory';
 import Flashcards from '@/pages/Flashcards';
 import Notes from '@/pages/Notes';
 import Storage from '@/pages/Storage';
@@ -81,6 +82,7 @@ const AuthenticatedApp = () => {
           <Route path="/survey" element={<Survey />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/timer" element={<Timer />} />
+          <Route path="/study-history" element={<StudyHistory />} />
           <Route path="/flashcards" element={<Flashcards />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/storage" element={<Storage />} />

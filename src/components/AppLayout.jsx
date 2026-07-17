@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Calendar, Cloud, BarChart3, Settings, Clock, Brain, FileText, User, Menu, X, Plus, Upload, Bell } from 'lucide-react';
+import { Home, Calendar, Cloud, BarChart3, Settings, Clock, Brain, FileText, User, Menu, X, Plus, Upload, Bell, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const bottomNav = [
@@ -13,6 +13,7 @@ const bottomNav = [
 
 const drawerItems = [
   { path: '/timer', icon: Clock, label: 'Study Timer' },
+  { path: '/study-history', icon: History, label: 'Study History' },
   { path: '/flashcards', icon: Brain, label: 'Flashcards' },
   { path: '/notes', icon: FileText, label: 'Notes' },
   { path: '/survey', icon: User, label: 'Edit Profile' },

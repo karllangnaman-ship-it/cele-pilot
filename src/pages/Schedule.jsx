@@ -580,7 +580,7 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
                   </div>
                   <div className="flex items-center gap-1">
                     {!task.completed && !task.skipped && task.type === 'study' && (
-                      <Link to={`/timer?subject=${task.subject}&duration=${task.duration_minutes}&taskId=${task.id}`}>
+                      <Link to={`/timer?subject=${encodeURIComponent(task.subject || '')}&topic=${encodeURIComponent(task.topic || '')}&duration=${task.duration_minutes}&taskId=${task.id}`}>
                         <button className="p-2 rounded-lg hover:bg-muted transition-colors"><Clock className="w-4 h-4 text-primary" /></button>
                       </Link>
                     )}

@@ -23,6 +23,9 @@ import {
   serverTimestamp,
   writeBatch,
   setDoc as firestoreSetDoc,
+  onSnapshot,
+  limit,
+  startAfter,
 } from 'firebase/firestore';
 import {
   ref,
@@ -162,6 +165,84 @@ const buildEntityMap = () => ({
   DailyAISchedule: getEntityApi('dailyAiSchedules'),
   DailyReview: getEntityApi('dailyReviews'),
 });
+
+// Study history deliberately has a small dedicated API instead of using the
+// generic entity helper: it needs a stable document id, pagination and a live
+// listener. Every operation is rooted at the authenticated user's document.
+const studyHistoryQueueKey = (uid) => `cele-study-history-queue:${uid}`;
+const readStudyHistoryQueue = (uid) => {
+  try { return JSON.parse(localStorage.getItem(studyHistoryQueueKey(uid)) || '[]'); } catch { return []; }
+};
+const writeStudyHistoryQueue = (uid, records) => {
+  try { localStorage.setItem(studyHistoryQueueKey(uid), JSON.stringify(records)); } catch { /* storage unavailable */ }
+};
+const toHistoryRecord = (item) => ({ id: item.id, ...item.data() });
+
+const studyHistory = {
+  async save(record) {
+    const uid = await getUserId(record.userId || record.user_id);
+    const id = record.id || crypto.randomUUID();
+    const payload = {
+      ...record,
+      id,
+      userId: uid,
+      // The camel-case schema is the canonical Study History schema.
+      createdAt: record.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await firestoreSetDoc(getUserDocRef(uid, 'studyHistory', id), {
+        ...payload,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      const queued = readStudyHistoryQueue(uid).filter((item) => item.id !== id);
+      writeStudyHistoryQueue(uid, queued);
+    } catch (error) {
+      // Keep one entry per id. setDoc with this same id makes subsequent syncs
+      // idempotent, including after an app reload.
+      const queued = readStudyHistoryQueue(uid);
+      writeStudyHistoryQueue(uid, [...queued.filter((item) => item.id !== id), payload]);
+      // A transient online failure is treated the same as offline. The browser
+      // will retry on its next online event, with the same document id.
+    }
+    return payload;
+  },
+  async flushPending() {
+    const uid = await getUserId();
+    const queued = readStudyHistoryQueue(uid);
+    for (const record of queued) {
+      await firestoreSetDoc(getUserDocRef(uid, 'studyHistory', record.id), {
+        ...record,
+        userId: uid,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+    writeStudyHistoryQueue(uid, []);
+  },
+  async getPage({ pageSize = 25, cursor = null } = {}) {
+    const uid = await getUserId();
+    const historyRef = getUserCollectionRef(uid, 'studyHistory');
+    const historyQuery = cursor
+      ? query(historyRef, orderBy('startTime', 'desc'), startAfter(cursor), limit(pageSize))
+      : query(historyRef, orderBy('startTime', 'desc'), limit(pageSize));
+    const snapshot = await getDocs(historyQuery);
+    return {
+      records: snapshot.docs.map(toHistoryRecord),
+      cursor: snapshot.docs.at(-1) || null,
+      hasMore: snapshot.docs.length === pageSize,
+    };
+  },
+  subscribe(callback, pageSize = 50) {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return () => {};
+    return onSnapshot(
+      query(getUserCollectionRef(uid, 'studyHistory'), orderBy('startTime', 'desc'), limit(pageSize)),
+      (snapshot) => callback(snapshot.docs.map(toHistoryRecord)),
+      () => callback([]),
+    );
+  },
+};
 
 const getGeminiErrorMessage = async (response) => {
   try {
@@ -340,6 +421,7 @@ export const firebaseApi = {
     },
   },
   entities: buildEntityMap(),
+  studyHistory,
   integrations: {
     Core: coreIntegrations,
   },
