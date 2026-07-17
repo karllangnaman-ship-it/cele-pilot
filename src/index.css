@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+.figure-frame { width: 100%; max-width: 340px; margin: 0.75rem auto; }
+.figure-image { display: block; width: 100%; max-height: 220px; }
+@media (min-width: 768px) { .figure-frame { max-width: 500px; } .figure-image { max-height: 280px; } }
+@media (min-width: 992px) { .figure-frame { max-width: 550px; } .figure-image { max-height: 300px; } }
+@media (min-width: 1200px) { .figure-frame { max-width: 600px; } .figure-image { max-height: 320px; } }
+
 @layer base {
   :root {
     --background: 220 20% 97%;
