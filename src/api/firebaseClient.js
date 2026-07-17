@@ -164,6 +164,13 @@ const buildEntityMap = () => ({
   // from tasks lets the next plan learn from history even after a regeneration.
   DailyAISchedule: getEntityApi('dailyAiSchedules'),
   DailyReview: getEntityApi('dailyReviews'),
+  Formula: getEntityApi('formulas'),
+  Question: getEntityApi('questions'),
+  Import: getEntityApi('imports'),
+  ExamResult: getEntityApi('examResults'),
+  PracticeHistory: getEntityApi('practiceHistory'),
+  UserFormulaHistory: getEntityApi('userFormulaHistory'),
+  UserQuestionHistory: getEntityApi('userQuestionHistory'),
 });
 
 // Study history deliberately has a small dedicated API instead of using the
@@ -285,6 +292,7 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema }) =>
     ],
     temperature: 0.2,
     stream: false,
+    file_urls,
   };
 
   if (response_json_schema) {

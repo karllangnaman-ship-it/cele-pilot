@@ -41,6 +41,10 @@ import Storage from '@/pages/Storage';
 import Stats from '@/pages/Stats';
 import SettingsPage from '@/pages/SettingsPage';
 import Notifications from '@/pages/Notifications';
+import FormulaSheet from '@/pages/FormulaSheet';
+import QuestionBank from '@/pages/QuestionBank';
+import PracticeMode from '@/pages/PracticeMode';
+import MockBoardExam from '@/pages/MockBoardExam';
 import AppLayout from '@/components/AppLayout';
 
 const AuthenticatedApp = () => {
@@ -89,6 +93,10 @@ const AuthenticatedApp = () => {
           <Route path="/stats" element={<Stats />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/formula-sheet" element={<FormulaSheet />} />
+          <Route path="/question-bank" element={<QuestionBank />} />
+          <Route path="/practice" element={<PracticeMode />} />
+          <Route path="/mock-board-exam" element={<MockBoardExam />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

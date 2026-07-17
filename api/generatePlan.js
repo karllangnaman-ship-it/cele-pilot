@@ -128,10 +128,33 @@ const validateRequest = (body) => {
   }
 
   if (body.stream === true) return 'Streaming responses are not supported.';
+  if (body.file_urls !== undefined && (!Array.isArray(body.file_urls) || body.file_urls.some((url) => typeof url !== 'string'))) {
+    return '"file_urls" must be an array of URLs when provided.';
+  }
   return null;
 };
 
-const buildGeminiRequest = ({ messages, temperature, response_format: responseFormat }) => {
+const MAX_INLINE_FILE_BYTES = 15 * 1024 * 1024;
+
+// Storage download URLs are fetched by the server and handed to Gemini as
+// inline parts. This supports PDFs, Office files, text, and image OCR without
+// exposing the Gemini key to the browser.
+const buildFileParts = async (fileUrls, signal) => {
+  const parts = [];
+  for (const url of fileUrls || []) {
+    const response = await fetch(url, { signal });
+    if (!response.ok) throw new Error(`Could not read uploaded file (${response.status}).`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_INLINE_FILE_BYTES) throw new Error('Uploaded file is larger than the 15 MB extraction limit.');
+    parts.push({ inlineData: {
+      mimeType: response.headers.get('content-type')?.split(';')[0] || 'application/octet-stream',
+      data: Buffer.from(bytes).toString('base64'),
+    } });
+  }
+  return parts;
+};
+
+const buildGeminiRequest = async ({ messages, temperature, response_format: responseFormat, file_urls: fileUrls }, signal) => {
   const systemInstruction = messages
     .filter(({ role }) => role === 'system')
     .map(({ content }) => content)
@@ -148,12 +171,12 @@ const buildGeminiRequest = ({ messages, temperature, response_format: responseFo
 
   return {
     systemInstruction: { parts: [{ text: [plannerInstructions, systemInstruction].filter(Boolean).join('\n\n') }] },
-    contents: messages
+    contents: await Promise.all(messages
       .filter(({ role }) => role !== 'system')
-      .map(({ role, content }) => ({
+      .map(async ({ role, content }, index) => ({
         role: role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: content }],
-      })),
+        parts: [{ text: content }, ...(index === messages.filter(({ role: messageRole }) => messageRole !== 'system').length - 1 ? await buildFileParts(fileUrls, signal) : [])],
+      }))),
     generationConfig,
   };
 };
@@ -222,7 +245,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const payload = buildGeminiRequest(req.body);
+    const payload = await buildGeminiRequest(req.body, controller.signal);
     for (const [index, model] of GEMINI_FAILOVER_MODELS.entries()) {
       const attempt = index + 1;
       const endpoint = getGenerateContentUrl(model);

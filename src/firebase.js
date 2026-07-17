@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -32,7 +32,11 @@ const app = firebaseInitializationError
   : (getApps().length ? getApps()[0] : initializeApp(firebaseConfig));
 
 export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
+// IndexedDB persistence keeps private study content available while offline and
+// lets the Firebase SDK synchronize queued writes once connectivity returns.
+export const db = app ? initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+}) : null;
 export const storage = app ? getStorage(app) : null;
 export const googleProvider = new GoogleAuthProvider();
 

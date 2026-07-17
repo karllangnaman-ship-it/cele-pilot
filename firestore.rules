@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Private study content is scoped beneath its authenticated owner.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Reserved for a future admin-published catalogue. Clients may read only
+    // explicitly public records; writes stay server/admin controlled.
+    match /publicFormulas/{id} { allow read: if resource.data.published == true; }
+    match /publicQuestions/{id} { allow read: if resource.data.published == true; }
+  }
+}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Calendar, Cloud, BarChart3, Settings, Clock, Brain, FileText, User, Menu, X, Plus, Upload, Bell, History } from 'lucide-react';
+import { Home, Calendar, Cloud, BarChart3, Settings, Clock, Brain, FileText, User, Menu, X, Plus, Upload, Bell, History, Sigma, CircleHelp, Dumbbell, ClipboardCheck, ChevronDown, LayoutDashboard, FolderOpen, BookOpen, ChartNoAxesCombined } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const bottomNav = [
@@ -11,13 +11,13 @@ const bottomNav = [
   { path: '/settings', icon: Settings, label: 'Profile' },
 ];
 
-const drawerItems = [
-  { path: '/timer', icon: Clock, label: 'Study Timer' },
-  { path: '/study-history', icon: History, label: 'Study History' },
-  { path: '/flashcards', icon: Brain, label: 'Flashcards' },
-  { path: '/notes', icon: FileText, label: 'Notes' },
-  { path: '/survey', icon: User, label: 'Edit Profile' },
-  { path: '/notifications', icon: Bell, label: 'Notifications' },
+const navigationSections = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, items: [bottomNav[0], bottomNav[1], bottomNav[3]] },
+  { id: 'storage', label: 'Storage', icon: FolderOpen, items: [bottomNav[2]] },
+  { id: 'account', label: 'Account', icon: User, items: [bottomNav[4], { path: '/survey', icon: User, label: 'Edit Profile' }, { path: '/notifications', icon: Bell, label: 'Notifications' }] },
+  { id: 'study', label: 'Study', icon: BookOpen, items: [{ path: '/timer', icon: Clock, label: 'Study Timer' }, { path: '/study-history', icon: History, label: 'Study History' }, { path: '/flashcards', icon: Brain, label: 'Flashcards' }, { path: '/notes', icon: FileText, label: 'Notes' }] },
+  { id: 'learning', label: 'Learning', icon: Brain, items: [{ path: '/formula-sheet', icon: Sigma, label: 'Formula Sheet' }, { path: '/question-bank', icon: CircleHelp, label: 'Question Bank' }, { path: '/practice', icon: Dumbbell, label: 'Practice Mode' }, { path: '/mock-board-exam', icon: ClipboardCheck, label: 'Mock Board Exam' }] },
+  { id: 'analytics', label: 'Analytics', icon: ChartNoAxesCombined, items: [{ path: '/stats?view=reports', icon: FileText, label: 'Reports' }, { path: '/stats?view=performance', icon: BarChart3, label: 'Performance' }, { path: '/study-history?view=progress', icon: History, label: 'Progress' }] },
 ];
 
 const quickActions = [
@@ -32,13 +32,42 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  const [expandedSections, setExpandedSections] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cele-navigation-sections') || '["dashboard"]'); } catch { return ['dashboard']; }
+  });
 
   useEffect(() => {
     setFabOpen(false);
     setDrawerOpen(false);
   }, [location.pathname]);
 
-  const allNavItems = [...bottomNav, ...drawerItems];
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem('cele-navigation-sections', JSON.stringify(expandedSections)); } catch { /* storage unavailable */ }
+  }, [expandedSections]);
+
+  useEffect(() => {
+    const activeSection = navigationSections.find((section) => section.items.some((item) => item.path.split('?')[0] === location.pathname));
+    if (activeSection && !expandedSections.includes(activeSection.id)) {
+      setExpandedSections(isMobile ? [activeSection.id] : (current) => [...current, activeSection.id]);
+    }
+  }, [location.pathname, isMobile]);
+
+  const toggleSection = (sectionId) => {
+    setExpandedSections((current) => {
+      const isExpanded = current.includes(sectionId);
+      if (isExpanded) return current.filter((id) => id !== sectionId);
+      return isMobile ? [sectionId] : [...current, sectionId];
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -81,22 +110,38 @@ export default function AppLayout() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <nav className="flex flex-col gap-1 flex-1">
-                {allNavItems.map(item => {
-                  const active = location.pathname === item.path;
+              <nav className="flex flex-col gap-1 flex-1 overflow-y-auto pr-1" aria-label="Main navigation">
+                {navigationSections.map((section) => {
+                  const expanded = expandedSections.includes(section.id);
+                  const containsActive = section.items.some((item) => item.path.split('?')[0] === location.pathname);
                   return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${
-                        active
-                          ? 'bg-primary text-primary-foreground shadow-lg'
-                          : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <item.icon className="w-5 h-5" />
-                      <span className="font-medium text-sm">{item.label}</span>
-                    </Link>
+                    <section key={section.id} className="rounded-2xl">
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(section.id)}
+                        aria-expanded={expanded}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors ${containsActive ? 'text-primary bg-primary/10' : 'hover:bg-muted text-foreground'}`}
+                      >
+                        <section.icon className="w-5 h-5" />
+                        <span className="flex-1 text-left font-semibold text-sm">{section.label}</span>
+                        <motion.span animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}><ChevronDown className="w-4 h-4" /></motion.span>
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {expanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.22, ease: 'easeInOut' }} className="overflow-hidden"
+                          >
+                            <div className="pt-1 pb-2 pl-3 space-y-1 border-l border-border/70 ml-5">
+                              {section.items.map((item) => {
+                                const active = location.pathname === item.path.split('?')[0];
+                                return <Link key={item.label} to={item.path} className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${active ? 'bg-primary text-primary-foreground shadow-lg' : 'hover:bg-muted text-muted-foreground hover:text-foreground'}`}><item.icon className="w-4 h-4" /><span className="font-medium text-sm">{item.label}</span></Link>;
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </section>
                   );
                 })}
               </nav>
