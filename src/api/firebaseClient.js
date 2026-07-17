@@ -329,7 +329,7 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema, time
 const coreIntegrations = {
   async UploadFile({ file, timeoutMs = 0, folder = 'Cloud', onProgress, signal }) {
     const uid = await getUserId();
-    return supabaseStorage.upload({ file, uid, folder, timeoutMs, onProgress, signal });
+    return supabaseStorage.upload({ file, folder, timeoutMs, onProgress, signal });
   },
   async DeleteFile({ path }) { return supabaseStorage.remove(path); },
   async SignFileUrl({ path, expiresIn }) { return supabaseStorage.signUrl(path, expiresIn); },

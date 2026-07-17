@@ -1,7 +1,3 @@
-import { firebaseApi } from '@/api/firebaseClient';
-
-export const QUESTION_IMPORT_ACCEPT = '.pdf,.docx,.pptx,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.webp';
-
 export const blankQuestion = () => ({
   question: '', choices: ['', '', '', ''], correctAnswer: '', explanation: '', formulaReference: '',
 });
@@ -39,15 +35,3 @@ export const validateGroup = (group) => {
   });
   return { valid: !missing.length, missing };
 };
-
-export async function extractQuestionGroups({ file, userId }) {
-  const { file_url, path } = await firebaseApi.integrations.Core.UploadFile({ file });
-  const result = await firebaseApi.integrations.Core.InvokeLLM({
-    file_urls: [file_url],
-    response_json_schema: { type: 'object', properties: { groups: { type: 'array', items: { type: 'object' } } } },
-    prompt: `You are CELE Pilot's CELE board-exam import engine. Extract questions from this file and return {groups:[...]}. A group has subject, topic, difficulty, kind ('standalone' or 'situation'), situationDescription, figures (URLs/descriptions when detected), questions (max 10), confidence. Each question has question, choices (exactly four strings), correctAnswer (A-D), explanation, formulaReference. CRITICAL: if numbered questions share one common situation, passage, data table, or figure (for example Questions 1-10), return exactly one kind:'situation' group: never split it into standalone questions. Detect subject/topic when possible; leave uncertain values editable. Preserve engineering notation and figure descriptions.`,
-  });
-  const groups = (result.groups || result.items || []).map((item) => normalizeGroup(item, 'imported'));
-  await firebaseApi.entities.Import.create({ user_id: userId, fileName: file.name, storagePath: path, bucket: 'cele-pilot', size: file.size, mimeType: file.type, contentType: 'questionGroups', status: 'review_required', itemCount: groups.length, sourceType: 'imported' });
-  return groups;
-}

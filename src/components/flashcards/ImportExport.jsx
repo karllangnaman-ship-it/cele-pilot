@@ -1,212 +1,69 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Download, Upload, FileJson, FileText, Check } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Check, Download, FileSpreadsheet, FileText, Upload } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { batchWriteItems, isSpreadsheetFile, normalizeSpreadsheetRow, readSpreadsheetRows } from '@/lib/spreadsheetImport';
+import { mapSpreadsheetRow, spreadsheetValidationReasons } from '@/lib/importEngine';
 
-const CSV_TEMPLATE = `Question,Answer,Category
-What is Hooke's Law?,Stress is directly proportional to strain.,PSAD
-What is Darcy's Law?,Flow through porous media.,HGE`;
+const configs = {
+  flashcard: {
+    title: 'Flashcards', entity: firebaseApi.entities.Flashcard, filename: 'flashcards',
+    columns: ['Question', 'Answer', 'Subject'],
+    sample: [{ Question: "What is Hooke's Law?", Answer: 'Stress is directly proportional to strain.', Subject: 'PSAD' }, { Question: "What is Darcy's Law?", Answer: 'Flow through porous media.', Subject: 'HGE' }],
+    description: 'Import question-and-answer study cards.',
+    map: (row) => { const value = normalizeSpreadsheetRow(row); return { question: value.question || '', answer: value.answer || '', subject: value.subject || value.category || 'MSTE', card_type: 'qa', difficulty: 'medium' }; },
+    validate: (item) => ['question', 'answer'].filter((key) => !String(item[key] || '').trim()).map((key) => `Missing required field: ${key}`),
+    export: (item) => ({ Question: item.question || '', Answer: item.answer || '', Subject: item.subject || '' }),
+    preview: ['Subject', 'Question', 'Answer'],
+  },
+  formula: {
+    title: 'Formula Library', entity: firebaseApi.entities.Formula, filename: 'formula-library',
+    columns: ['Subject', 'Category', 'Formula Name', 'Formula', 'Description', 'Tags'],
+    sample: [{ Subject: 'PSAD', Category: 'Mechanics of Materials', 'Formula Name': 'Stress', Formula: 'σ=P/A', Description: 'Normal stress.', Tags: 'stress, mechanics' }, { Subject: 'MSTE', Category: 'Geometry', 'Formula Name': 'Area', Formula: 'A=πr²', Description: 'Area of a circle.', Tags: 'area, geometry' }],
+    description: 'Import formulas with their subject, category, and tags.',
+    map: (row) => mapSpreadsheetRow(row, 'formula'), validate: (item) => spreadsheetValidationReasons(item, 'formula'),
+    export: (item) => ({ Subject: item.subject || '', Category: item.topic || '', 'Formula Name': item.name || '', Formula: item.formula || '', Description: item.description || '', Tags: Array.isArray(item.tags) ? item.tags.join(', ') : item.tags || '' }),
+    preview: ['Subject', 'Formula Name', 'Formula'],
+  },
+  question: {
+    title: 'Question Bank', entity: firebaseApi.entities.Question, filename: 'question-bank',
+    columns: ['Subject', 'Topic', 'Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer', 'Explanation', 'Difficulty', 'Tags'],
+    sample: [{ Subject: 'PSAD', Topic: 'Mechanics of Materials', Question: 'What is stress?', 'Option A': 'Force per unit area', 'Option B': 'Change in length', 'Option C': 'Mass per unit volume', 'Option D': 'Moment per unit length', 'Correct Answer': 'A', Explanation: 'Stress is force divided by area.', Difficulty: 'medium', Tags: 'stress' }],
+    description: 'Import multiple-choice questions and explanations.',
+    map: (row) => mapSpreadsheetRow(row, 'question'), validate: (item) => spreadsheetValidationReasons(item, 'question'),
+    export: (item) => ({ Subject: item.subject || '', Topic: item.topic || '', Question: item.question || '', 'Option A': item.choices?.[0] || '', 'Option B': item.choices?.[1] || '', 'Option C': item.choices?.[2] || '', 'Option D': item.choices?.[3] || '', 'Correct Answer': item.correctAnswer || '', Explanation: item.explanation || '', Difficulty: item.difficulty || '', Tags: Array.isArray(item.tags) ? item.tags.join(', ') : item.tags || '' }),
+    preview: ['Subject', 'Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer'],
+  },
+};
 
-const JSON_TEMPLATE = JSON.stringify([
-  { question: "What is Hooke's Law?", answer: "Stress is directly proportional to strain.", category: "PSAD" },
-  { question: "What is Darcy's Law?", answer: "Flow through porous media.", category: "HGE" }
-], null, 2);
+const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+const downloadBlob = (name, blob) => { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url); };
 
-function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-  return lines.slice(1).map(line => {
-    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-    const row = {};
-    headers.forEach((h, i) => { row[h] = vals[i]; });
-    return row;
-  }).filter(r => r.question || r.question === '');
-}
-
-function mapSubject(s) {
-  const up = (s || '').toUpperCase();
-  if (up.includes('HGE')) return 'HGE';
-  if (up.includes('PSAD')) return 'PSAD';
-  return 'MSTE';
-}
-
-export default function ImportExport({ user, cards, onImported }) {
-  const [open, setOpen] = useState(false);
-  const [preview, setPreview] = useState([]);
-  const [importing, setImporting] = useState(false);
-  const inputRef = useRef(null);
-  const { toast } = useToast();
-
-  const handleImportFile = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setImporting(true);
-    try {
-      const ext = file.name.split('.').pop().toLowerCase();
-      let rows = [];
-
-      if (ext === 'json') {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        rows = (Array.isArray(data) ? data : data.cards || []).map(r => ({
-          question: r.question || r.Question || '',
-          answer: r.answer || r.Answer || '',
-          subject: mapSubject(r.category || r.subject || r.Category || r.Subject),
-        }));
-      } else if (ext === 'csv') {
-        const text = await file.text();
-        rows = parseCSV(text).map(r => ({
-          question: r.question || r.question || '',
-          answer: r.answer || r.answer || '',
-          subject: mapSubject(r.category || r.subject),
-        }));
-      } else if (['xlsx', 'xls'].includes(ext)) {
-        const { file_url } = await firebaseApi.integrations.Core.UploadFile({ file, folder: 'Flashcards' });
-        const extracted = await firebaseApi.integrations.Core.ExtractDataFromUploadedFile({
-          file_url,
-          json_schema: {
-            type: "object",
-            properties: { question: { type: "string" }, answer: { type: "string" }, category: { type: "string" } }
-          }
-        });
-        const out = Array.isArray(extracted.output) ? extracted.output : (extracted.output ? [extracted.output] : []);
-        rows = out.map(r => ({
-          question: r.question || '',
-          answer: r.answer || '',
-          subject: mapSubject(r.category || r.subject),
-        }));
-      } else {
-        toast({ title: 'Unsupported format. Use CSV, JSON, or Excel.', variant: 'destructive' });
-        setImporting(false);
-        return;
-      }
-
-      const valid = rows.filter(r => r.question && r.answer);
-      setPreview(valid);
-    } catch {
-      toast({ title: 'Failed to parse file', variant: 'destructive' });
-    }
-    setImporting(false);
+export default function ImportExport({ user, cards = [], onImported, type = 'flashcard' }) {
+  const config = configs[type]; const [open, setOpen] = useState(false); const [preview, setPreview] = useState([]); const [status, setStatus] = useState(null); const inputRef = useRef(null); const { toast } = useToast();
+  const rowsFor = (items) => items.map(config.export);
+  const downloadFile = async (format, template = false) => {
+    const rows = template ? config.sample : rowsFor(cards);
+    if (format === 'csv') { const csv = [config.columns.map(quote).join(','), ...rows.map((row) => config.columns.map((column) => quote(row[column])).join(','))].join('\n'); downloadBlob(`${template ? `${config.filename}-template` : config.filename}.csv`, new Blob([csv], { type: 'text/csv' })); return; }
+    const XLSX = await import('xlsx'); const sheet = XLSX.utils.json_to_sheet(rows, { header: config.columns }); const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, config.title); XLSX.writeFile(book, `${template ? `${config.filename}-template` : config.filename}.xlsx`);
   };
-
-  const confirmImport = async () => {
-    const toCreate = preview.map(r => ({ ...r, user_id: user.id, card_type: 'qa', difficulty: 'medium' }));
-    if (toCreate.length === 0) return;
-    const created = await firebaseApi.entities.Flashcard.bulkCreate(toCreate);
-    onImported(created);
-    toast({ title: `${created.length} flashcards imported!` });
-    setPreview([]);
-    setOpen(false);
+  const selectFile = async (event) => {
+    const file = event.target.files?.[0]; if (!file) return; if (!isSpreadsheetFile(file)) { toast({ title: 'Unsupported format. Use CSV, XLS, or XLSX.', variant: 'destructive' }); return; }
+    setStatus({ phase: 'Parsing file', progress: 5 });
+    try { const rawRows = await readSpreadsheetRows(file, setStatus); const entries = []; const skipped = [];
+      rawRows.forEach((raw, index) => { const item = config.map(raw); const reasons = config.validate(item); const entry = { row: index + 2, item, parsedRow: raw, reasons }; if (reasons.length) skipped.push(entry); else entries.push(entry); });
+      setPreview(entries); setStatus({ phase: 'Validated', progress: 45, total: rawRows.length, skipped: skipped.length });
+      if (!entries.length) toast({ title: 'No valid rows found', description: skipped[0]?.reasons.join(', '), variant: 'destructive' });
+    } catch (error) { setStatus(null); toast({ title: error.message || 'Failed to parse file', variant: 'destructive' }); }
+    finally { event.target.value = ''; }
   };
-
-  const exportCSV = () => {
-    const header = 'Question,Answer,Category\n';
-    const rows = cards.map(c => `"${(c.question || '').replace(/"/g, '""')}","${(c.answer || '').replace(/"/g, '""')}","${c.subject || ''}"`).join('\n');
-    download('flashcards.csv', header + rows, 'text/csv');
+  const confirmImport = async () => { if (!preview.length || !user) return; setStatus({ phase: 'Saving to Firestore', progress: 50, total: preview.length });
+    try { const { created, failedRows } = await batchWriteItems({ entries: preview, entity: config.entity, userId: user.id, total: preview.length, onProgress: setStatus }); onImported(created); toast({ title: `${created.length} ${config.title.toLowerCase()} imported!`, description: failedRows.length ? `${failedRows.length} rows could not be saved.` : 'Saved directly to Firestore.' }); setPreview([]); setOpen(false); setStatus(null); }
+    catch (error) { toast({ title: error.message || `Unable to import ${config.title.toLowerCase()}.`, variant: 'destructive' }); }
   };
-
-  const exportJSON = () => {
-    const data = cards.map(c => ({ question: c.question, answer: c.answer, category: c.subject, card_type: c.card_type, difficulty: c.difficulty }));
-    download('flashcards.json', JSON.stringify(data, null, 2), 'application/json');
-  };
-
-  const downloadTemplate = (name, content, type) => {
-    download(name, content, type);
-  };
-
-  const download = (name, content, type) => {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = name; a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Upload className="w-4 h-4 mr-1" /> Import / Export
-      </Button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Import & Export Flashcards</DialogTitle></DialogHeader>
-
-          <Tabs defaultValue="import">
-            <TabsList className="grid grid-cols-2">
-              <TabsTrigger value="import"><Upload className="w-4 h-4 mr-1" /> Import</TabsTrigger>
-              <TabsTrigger value="export"><Download className="w-4 h-4 mr-1" /> Export</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="import" className="space-y-4 mt-4">
-              {preview.length === 0 ? (
-                <>
-                  <div>
-                    <p className="text-sm font-medium mb-2">Step 1: Download a template</p>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => downloadTemplate('flashcard_template.csv', CSV_TEMPLATE, 'text/csv')}>
-                        <FileText className="w-4 h-4" /> CSV Template
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => downloadTemplate('flashcard_template.json', JSON_TEMPLATE, 'application/json')}>
-                        <FileJson className="w-4 h-4" /> JSON Template
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="glass-card p-3 bg-muted/30">
-                    <p className="text-xs font-medium mb-1">CSV Format:</p>
-                    <pre className="text-[10px] text-muted-foreground overflow-x-auto">{CSV_TEMPLATE}</pre>
-                    <p className="text-xs font-medium mt-2 mb-1">JSON Format:</p>
-                    <pre className="text-[10px] text-muted-foreground overflow-x-auto">{JSON_TEMPLATE}</pre>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-medium mb-2">Step 2: Upload your file</p>
-                    <Button onClick={() => inputRef.current?.click()} disabled={importing} className="w-full">
-                      {importing ? <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                      Choose CSV / JSON / Excel
-                    </Button>
-                    <input ref={inputRef} type="file" accept=".csv,.json,.xlsx,.xls" className="hidden" onChange={handleImportFile} />
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium">{preview.length} flashcards ready to import</p>
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {preview.map((c, i) => (
-                      <div key={i} className="glass-card p-2 text-xs">
-                        <span className="font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary mr-2">{c.subject}</span>
-                        <span className="font-medium">{c.question}</span>
-                        <p className="text-muted-foreground mt-1">{c.answer}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={() => setPreview([])}>Cancel</Button>
-                    <Button className="flex-1" onClick={confirmImport}><Check className="w-4 h-4 mr-2" /> Import {preview.length} Cards</Button>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="export" className="space-y-4 mt-4">
-              <p className="text-sm text-muted-foreground">Export your {cards.length} flashcards to a file for backup or sharing.</p>
-              <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" onClick={exportCSV} disabled={cards.length === 0}>
-                  <FileText className="w-4 h-4 mr-2" /> Export CSV
-                </Button>
-                <Button variant="outline" onClick={exportJSON} disabled={cards.length === 0}>
-                  <FileJson className="w-4 h-4 mr-2" /> Export JSON
-                </Button>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
+  return <><Button variant="outline" size="sm" onClick={() => setOpen(true)}><Upload className="w-4 h-4 mr-1" /> Import / Export</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Import & Export {config.title}</DialogTitle></DialogHeader><Tabs defaultValue="import"><TabsList className="grid grid-cols-2"><TabsTrigger value="import"><Upload className="w-4 h-4 mr-1" /> Import</TabsTrigger><TabsTrigger value="export"><Download className="w-4 h-4 mr-1" /> Export</TabsTrigger></TabsList><TabsContent value="import" className="space-y-4 mt-4">{!preview.length ? <><section><p className="text-sm font-medium mb-2">Templates</p><div className="grid gap-2 sm:grid-cols-2">{['csv', 'xlsx'].map((format) => <div className="rounded-lg border p-3" key={format}><div className="flex items-center gap-2 font-medium">{format === 'csv' ? <FileText className="w-4 h-4" /> : <FileSpreadsheet className="w-4 h-4" />}{config.title.replace('Library', '')} {format === 'csv' ? 'CSV' : 'Excel'} Template</div><p className="text-xs text-muted-foreground mt-2">{format.toUpperCase()} · {config.columns.length} columns</p><p className="text-xs text-muted-foreground">{config.description}</p><Button className="mt-3" size="sm" variant="outline" onClick={() => downloadFile(format, true)}><Download className="w-3.5 h-3.5 mr-1" /> Download</Button></div>)}</div></section><section className="rounded-lg bg-muted/40 p-3 overflow-x-auto"><p className="text-xs font-medium mb-2">Template preview</p><table className="text-xs min-w-full"><thead><tr>{config.preview.map((column) => <th className="text-left pr-4 pb-1" key={column}>{column.replace('Option ', '')}</th>)}</tr></thead><tbody>{config.sample.slice(0, 2).map((row, index) => <tr key={index}>{config.preview.map((column) => <td className="pr-4 py-1 text-muted-foreground" key={column}>{row[column]}</td>)}</tr>)}</tbody></table></section><section><p className="text-sm font-medium mb-2">Choose File</p><Button onClick={() => inputRef.current?.click()} className="w-full"><Upload className="w-4 h-4 mr-2" /> Choose CSV / Excel</Button><input ref={inputRef} type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={selectFile} /><p className="text-xs text-muted-foreground mt-2">Files are read locally and are never uploaded.</p></section></> : <div className="space-y-3"><p className="text-sm font-medium">{preview.length} {config.title.toLowerCase()} ready to import</p><div className="max-h-60 overflow-auto rounded border"><table className="w-full text-xs"><thead className="sticky top-0 bg-muted"><tr>{config.preview.map((column) => <th className="text-left p-2" key={column}>{column.replace('Option ', '')}</th>)}</tr></thead><tbody>{preview.map(({ item }, index) => { const row = config.export(item); return <tr className="border-t" key={index}>{config.preview.map((column) => <td className="p-2" key={column}>{row[column]}</td>)}</tr>; })}</tbody></table></div><div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => { setPreview([]); setStatus(null); }}>Cancel</Button><Button className="flex-1" onClick={confirmImport}><Check className="w-4 h-4 mr-2" /> Import {preview.length}</Button></div></div>}{status && <div className="space-y-1"><div className="flex justify-between text-xs"><span>{status.phase}</span><span>{status.progress || 0}%</span></div><Progress value={status.progress || 0} /></div>}</TabsContent><TabsContent value="export" className="space-y-4 mt-4"><p className="text-sm text-muted-foreground">Export your {cards.length} {config.title.toLowerCase()} for backup or sharing.</p><div className="grid grid-cols-2 gap-3"><Button variant="outline" disabled={!cards.length} onClick={() => downloadFile('csv')}><FileText className="w-4 h-4 mr-2" /> Export CSV</Button><Button variant="outline" disabled={!cards.length} onClick={() => downloadFile('xlsx')}><FileSpreadsheet className="w-4 h-4 mr-2" /> Export Excel</Button></div></TabsContent></Tabs></DialogContent></Dialog></>;
 }
