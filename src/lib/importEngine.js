@@ -151,17 +151,27 @@ export function mapSpreadsheetRow(row, type) {
       type,
       "spreadsheet",
     );
+  const suppliedQuestionType = first(values, "questiontype");
+  const situationKey = first(values, "situationid");
+  const questionType = suppliedQuestionType
+    ? suppliedQuestionType.trim().toLowerCase()
+    : situationKey
+      ? "situation"
+      : "standalone";
+  const isStandalone = questionType === "standalone";
   return normalizeItem(
     {
-      situationKey: first(values, "situationid"),
-      situationTitle: first(values, "situationtitle"),
-      situationDescription: first(values, "situationdescription", "situation"),
-      imageUrl: first(values, "imageurl"),
-      figureLabel: first(values, "figurelabel"),
+      questionType,
+      questionTypeDetected: !suppliedQuestionType,
+      situationKey: isStandalone ? "" : situationKey,
+      situationTitle: isStandalone ? "" : first(values, "situationtitle"),
+      situationDescription: isStandalone ? "" : first(values, "situationdescription", "situation"),
+      imageUrl: isStandalone ? "" : first(values, "imageurl"),
+      figureLabel: isStandalone ? "" : first(values, "figurelabel"),
       subject: first(values, "subject"),
       topic: first(values, "topic"),
       subtopic: first(values, "subtopic", "subtopic"),
-      questionNumber: first(values, "questionnumber", "questionno"),
+      questionNumber: isStandalone ? "" : first(values, "questionnumber", "questionno"),
       difficulty: first(values, "difficulty") || "medium",
       question: first(values, "question"),
       choices: [
@@ -186,10 +196,13 @@ export function mapSpreadsheetRow(row, type) {
 }
 
 export function spreadsheetValidationReasons(item, type) {
-  if (type !== "formula")
-    return validateItem(item, type).missing.map(
-      (field) => `Missing required field: ${field}`,
-    );
+  if (type !== "formula") {
+    const reasons = validateItem(item, type).missing.map((field) => `Missing required field: ${field}`);
+    const questionType = String(item.questionType || '').trim().toLowerCase();
+    if (questionType && !['standalone', 'situation'].includes(questionType)) reasons.push('Question Type must be Standalone or Situation');
+    if (questionType === 'situation' && !String(item.situationKey || '').trim()) reasons.push('Situation ID is required for Situation questions');
+    return reasons;
+  }
   return validateItem(item, type).missing.map(
     (field) => `Missing required field: ${field}`,
   );

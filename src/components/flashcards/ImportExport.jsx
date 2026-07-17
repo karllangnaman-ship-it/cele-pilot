@@ -158,6 +158,7 @@ const configs = {
     entity: firebaseApi.entities.Question,
     filename: "question-bank",
     columns: [
+      "Question Type",
       "Situation ID",
       "Situation Title",
       "Situation Description",
@@ -179,6 +180,28 @@ const configs = {
     ],
     sample: [
       {
+        "Question Type": "Standalone",
+        "Situation ID": "",
+        "Situation Title": "",
+        "Situation Description": "",
+        "Figure Label": "",
+        "Image URL": "",
+        Subject: "PSAD",
+        Topic: "Mechanics of Materials",
+        "Sub Topic": "Axial Stress",
+        "Question Number": "",
+        Question: "What is normal stress?",
+        "Option A": "Force per unit area",
+        "Option B": "Moment per unit area",
+        "Option C": "Pressure × Area",
+        "Option D": "Weight × Length",
+        "Correct Answer": "A",
+        Explanation: "Normal stress is force divided by area.",
+        Difficulty: "medium",
+        Tags: "stress, mechanics",
+      },
+      {
+        "Question Type": "Situation",
         "Situation ID": "SIT-001",
         "Situation Title": "Simply Supported Beam",
         "Situation Description":
@@ -200,7 +223,7 @@ const configs = {
       },
     ],
     description:
-      "Import standalone or grouped board-exam questions with remote figures.",
+      "Use Question Type to import standalone or grouped situation questions.",
     map: (row) => mapSpreadsheetRow(row, "question"),
     validate: (item) => spreadsheetValidationReasons(item, "question"),
     export: (item, situations = []) => {
@@ -208,6 +231,7 @@ const configs = {
         (entry) => entry.id === item.situationId,
       );
       return {
+        "Question Type": situation || item.situationKey ? "Situation" : "Standalone",
         "Situation ID": situation?.externalId || item.situationKey || "",
         "Situation Title": situation?.title || item.situationTitle || "",
         "Situation Description":
@@ -230,6 +254,7 @@ const configs = {
       };
     },
     preview: [
+      "Question Type",
       "Situation ID",
       "Question Number",
       "Question",
@@ -256,7 +281,7 @@ async function importQuestionEntries({ entries, userId, onProgress }) {
   const groups = new Map();
   const standalone = [];
   entries.forEach((entry) => {
-    const key = entry.item.situationKey?.trim();
+    const key = entry.item.questionType === "situation" ? entry.item.situationKey?.trim() : "";
     if (key) groups.set(key, [...(groups.get(key) || []), entry]);
     else standalone.push(entry);
   });
@@ -373,8 +398,10 @@ export default function ImportExport({
       const rawRows = await readSpreadsheetRows(file, setStatus);
       const entries = [];
       const skipped = [];
+      let automaticallyDetected = false;
       rawRows.forEach((raw, index) => {
         const item = config.map(raw);
+        automaticallyDetected ||= type === "question" && item.questionTypeDetected;
         const reasons = config.validate(item);
         const entry = { row: index + 2, item, parsedRow: raw, reasons };
         if (reasons.length) skipped.push(entry);
@@ -387,6 +414,11 @@ export default function ImportExport({
         total: rawRows.length,
         skipped: skipped.length,
       });
+      if (automaticallyDetected)
+        toast({
+          title: "Question Type automatically detected.",
+          description: "Rows with a Situation ID were treated as Situation; the rest as Standalone.",
+        });
       if (!entries.length)
         toast({
           title: "No valid rows found",
@@ -464,6 +496,13 @@ export default function ImportExport({
             <TabsContent value="import" className="space-y-4 mt-4">
               {!preview.length ? (
                 <>
+                  {type === "question" && (
+                    <section className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm space-y-2">
+                      <p className="font-medium">Question Type Guide</p>
+                      <p><span className="font-medium">Standalone</span> → Leave all Situation columns blank.</p>
+                      <p><span className="font-medium">Situation</span> → Fill the Situation information once and use the same Situation ID for all related questions.</p>
+                    </section>
+                  )}
                   <section>
                     <p className="text-sm font-medium mb-2">Templates</p>
                     <div className="grid gap-2 sm:grid-cols-2">
