@@ -2,11 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Sparkles, Loader2, Star, Layers, BookOpen, BarChart3 } from 'lucide-react';
+import { Plus, Sparkles, Loader2, Star, Layers, BookOpen, BarChart3, Trash2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import FlashcardCard from '@/components/flashcards/FlashcardCard';
 import FlashcardEditor from '@/components/flashcards/FlashcardEditor';
@@ -16,6 +18,7 @@ import ImportExport from '@/components/flashcards/ImportExport';
 import StudySession from '@/components/flashcards/StudySession';
 import SearchBar from '@/components/content/SearchBar';
 import SubjectFilter from '@/components/content/SubjectFilter';
+import { flashcardSchema, generateWithGemini } from '@/lib/aiGeneration';
 
 const SUBJECTS = ['all', 'MSTE', 'HGE', 'PSAD'];
 const FILTERS = ['all', 'favorite', 'ai', 'manual', 'mastered', 'due'];
@@ -32,6 +35,7 @@ export default function Flashcards() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false); const [aiPreview, setAiPreview] = useState([]); const [aiStatus, setAiStatus] = useState(''); const [aiConfig, setAiConfig] = useState({ subject: 'PSAD', quantity: '10', difficulty: 'medium', topic: '' }); const [aiController, setAiController] = useState(null);
   const [newCard, setNewCard] = useState({ question: '', answer: '', subject: 'MSTE', difficulty: 'medium', card_type: 'qa' });
   const { toast } = useToast();
 
@@ -103,42 +107,17 @@ export default function Flashcards() {
   };
 
   const generateFromTopics = async () => {
+    const controller = new AbortController(); setAiController(controller); setGenerating(true); setAiStatus('Generating with Gemini…');
     setGenerating(true);
     try {
-      const profiles = await firebaseApi.entities.SurveyProfile.filter({ user_id: user.id });
-      const profile = profiles[0];
-      const weakTopics = [
-        ...(profile?.weak_topics_mste || []).map(t => `MSTE: ${t}`),
-        ...(profile?.weak_topics_hge || []).map(t => `HGE: ${t}`),
-        ...(profile?.weak_topics_psad || []).map(t => `PSAD: ${t}`),
-      ];
-      const result = await firebaseApi.integrations.Core.InvokeLLM({
-        prompt: `Generate 10 CELE review flashcards covering MSTE, HGE, and PSAD. ${weakTopics.length > 0 ? `Focus on weak topics: ${weakTopics.join(', ')}` : 'Cover a mix of topics'}. Mix difficulties. Highlight keywords in **bold**. Assign card_type and subject.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            cards: { type: "array", items: { type: "object", properties: {
-              question: { type: "string" }, answer: { type: "string" }, subject: { type: "string" },
-              difficulty: { type: "string" }, card_type: { type: "string" }
-            } } }
-          }
-        }
-      });
-      const newCards = (result.cards || []).map(c => ({
-        user_id: user.id, question: c.question, answer: c.answer,
-        subject: ['MSTE', 'HGE', 'PSAD'].includes(c.subject) ? c.subject : 'MSTE',
-        difficulty: c.difficulty || 'medium', card_type: c.card_type || 'qa', is_ai_generated: true,
-      }));
-      if (newCards.length > 0) {
-        const created = await firebaseApi.entities.Flashcard.bulkCreate(newCards);
-        setCards(prev => [...created, ...prev]);
-        toast({ title: `${created.length} flashcards generated!` });
-      }
-    } catch {
-      toast({ title: 'Generation failed', variant: 'destructive' });
+      const result = await generateWithGemini({ signal: controller.signal, onProgress: setAiStatus, schema: flashcardSchema, prompt: `Generate exactly ${aiConfig.quantity} non-duplicate, technically correct flashcards for the Philippine Civil Engineering Licensure Examination (CELE). Subject: ${aiConfig.subject}. Difficulty: ${aiConfig.difficulty}. ${aiConfig.topic ? `Topic: ${aiConfig.topic}.` : 'Choose a balanced topic appropriate to the subject.'} Return JSON only with a cards array. Every card must include subject, topic, question, answer, optional explanation, tags array, and difficulty. Keep answers concise and exam-relevant.` });
+      setAiPreview((result.cards || []).map((card) => ({ ...card, subject: ['PSAD', 'MSTE', 'HGE'].includes(card.subject) ? card.subject : aiConfig.subject, difficulty: card.difficulty || aiConfig.difficulty, tags: Array.isArray(card.tags) ? card.tags : [] }))); setAiOpen(false);
+    } catch (error) {
+      toast({ title: 'Gemini generation failed', description: error.message, variant: 'destructive' });
     }
-    setGenerating(false);
+    finally { setGenerating(false); setAiController(null); setAiStatus(''); }
   };
+  const saveAiPreview = async () => { const valid = aiPreview.filter((card) => card.question?.trim() && card.answer?.trim()); const created = await firebaseApi.entities.Flashcard.bulkCreate(valid.map((card) => ({ ...card, user_id: user.id, card_type: 'qa', is_ai_generated: true }))); setCards((current) => [...created, ...current]); setAiPreview([]); toast({ title: `${created.length} flashcards saved` }); };
 
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
@@ -149,7 +128,7 @@ export default function Flashcards() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Flashcards</h1>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={generateFromTopics} disabled={generating}>
+          <Button variant="outline" size="sm" onClick={() => setAiOpen(true)} disabled={generating}>
             {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />} AI Generate
           </Button>
           <UploadGenerator user={user} onSaved={(created) => setCards(prev => [...created, ...prev])} />
@@ -238,6 +217,8 @@ export default function Flashcards() {
       </Tabs>
 
       <FlashcardEditor card={editCard} open={editorOpen} onClose={() => setEditorOpen(false)} onSave={handleSaveEdit} onDelete={deleteCard} onDuplicate={duplicateCard} />
+      <Dialog open={aiOpen} onOpenChange={(open) => !generating && setAiOpen(open)}><DialogContent><DialogHeader><DialogTitle>Generate Flashcards with Gemini</DialogTitle></DialogHeader><div className="space-y-3"><div><Label>Subject</Label><Select value={aiConfig.subject} onValueChange={(value) => setAiConfig((current) => ({ ...current, subject: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['PSAD', 'MSTE', 'HGE'].map((value) => <SelectItem value={value} key={value}>{value}</SelectItem>)}</SelectContent></Select></div><div><Label>Number of Flashcards</Label><Input type="number" min="1" max="100" value={aiConfig.quantity} onChange={(event) => setAiConfig((current) => ({ ...current, quantity: event.target.value }))} /><p className="text-xs text-muted-foreground">Examples: 10, 20, 30, 50, 100 — or any custom amount.</p></div><div><Label>Difficulty</Label><Select value={aiConfig.difficulty} onValueChange={(value) => setAiConfig((current) => ({ ...current, difficulty: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['easy', 'medium', 'hard', 'mixed'].map((value) => <SelectItem value={value} key={value}>{value}</SelectItem>)}</SelectContent></Select></div><div><Label>Topic (optional)</Label><Input value={aiConfig.topic} onChange={(event) => setAiConfig((current) => ({ ...current, topic: event.target.value }))} placeholder="Stress, Beams, Hydraulics…" /></div>{generating && <><p className="text-sm">{aiStatus} Current batch: {aiConfig.quantity} items.</p><Progress value={50} /></>}<Button className="w-full" onClick={generateFromTopics} disabled={generating}>{generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating…</> : 'Generate Preview'}</Button>{generating && <Button className="w-full" variant="outline" onClick={() => aiController?.abort()}>Cancel</Button>}</div></DialogContent></Dialog>
+      <Dialog open={aiPreview.length > 0} onOpenChange={(open) => !open && setAiPreview([])}><DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>Review Generated Flashcards ({aiPreview.length})</DialogTitle></DialogHeader><div className="space-y-3">{aiPreview.map((card, index) => <div className="rounded border p-3 space-y-2" key={index}><div className="flex justify-between"><b>{card.subject} · {card.topic}</b><Button variant="ghost" size="icon" onClick={() => setAiPreview((current) => current.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button></div><Textarea value={card.question || ''} onChange={(event) => setAiPreview((current) => current.map((item, i) => i === index ? { ...item, question: event.target.value } : item))} /><Textarea value={card.answer || ''} onChange={(event) => setAiPreview((current) => current.map((item, i) => i === index ? { ...item, answer: event.target.value } : item))} /></div>)}</div><div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => setAiPreview([])}>Discard</Button><Button className="flex-1" onClick={saveAiPreview}>Save All</Button></div></DialogContent></Dialog>
     </div>
   );
 }

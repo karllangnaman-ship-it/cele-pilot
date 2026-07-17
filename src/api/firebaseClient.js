@@ -278,7 +278,7 @@ const getGeminiErrorMessage = async (response) => {
   }
 };
 
-const invokeGemini = async ({ prompt, file_urls = [], response_json_schema, timeoutMs = 0 }) => {
+const invokeGemini = async ({ prompt, file_urls = [], response_json_schema, timeoutMs = 0, signal }) => {
   const systemPrompt = 'You are a helpful CELE study planner. Return valid JSON only when requested.';
   const userPrompt = file_urls.length > 0 ? `${prompt}\n\nAdditional file references:\n${file_urls.join('\n')}` : prompt;
 
@@ -297,6 +297,7 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema, time
   }
 
   const controller = timeoutMs ? new AbortController() : null;
+  const activeSignal = signal || controller?.signal;
   const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   let response;
   try {
@@ -304,7 +305,7 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema, time
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: controller?.signal,
+      signal: activeSignal,
     });
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('Gemini extraction timed out after 60 seconds. Please try again.');
@@ -353,8 +354,8 @@ const coreIntegrations = {
       prompt: `Transcribe the supplied audio content into text. Return only the transcription.\n\nAudio URL: ${audio_url}`,
     });
   },
-  async InvokeLLM({ prompt, response_json_schema, file_urls = [], timeoutMs = 0 }) {
-    return invokeGemini({ prompt, file_urls, response_json_schema, timeoutMs });
+  async InvokeLLM({ prompt, response_json_schema, file_urls = [], timeoutMs = 0, signal }) {
+    return invokeGemini({ prompt, file_urls, response_json_schema, timeoutMs, signal });
   },
 };
 
