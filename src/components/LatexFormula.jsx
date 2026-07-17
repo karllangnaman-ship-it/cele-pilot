@@ -1,14 +1,15 @@
 import React, { useMemo } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { normalizeEngineeringNotation } from '@/lib/engineeringNotation';
 
 const render = (latex, displayMode) => {
-  try { return katex.renderToString(latex, { displayMode, throwOnError: true, strict: 'ignore' }); }
+  try { return katex.renderToString(normalizeEngineeringNotation(latex), { displayMode, throwOnError: true, strict: 'ignore' }); }
   catch (error) { console.warn('[LaTeX] Render failed; showing plain text.', { latex, error }); return null; }
 };
 // Recognizes both raw LaTeX commands and common engineering exponents when
 // they appear inside otherwise normal prose (for example, `\\sigma` or `m^2`).
-const bareLatex = /\\[a-zA-Z]+(?:\s*(?:\{[^{}]*\}|[_^](?:\{[^{}]*\}|[a-zA-Z0-9])))*|\b[a-zA-Z]+(?:\/[a-zA-Z]+)?\^(?:\{[^{}]*\}|[a-zA-Z0-9]+)/g;
+const bareLatex = /\\[a-zA-Z]+(?:\s*(?:\{[^{}]*\}|[_^](?:\{[^{}]*\}|[a-zA-Z0-9])))*|\b(?:alpha|beta|gamma|delta|Delta|epsilon|varepsilon|zeta|eta|theta|Theta|lambda|Lambda|mu|nu|xi|pi|Pi|rho|sigma|Sigma|tau|phi|Phi|chi|psi|Psi|omega|Omega)(?:\s*=\s*[A-Za-z0-9/]+)?\b|\b(?:sqrt|vec)\([^)]*\)|\b[A-Za-z]+(?:\/[A-Za-z]+)?\^(?:\{[^{}]*\}|[A-Za-z0-9]+)|\b(?:[FMVP][xyz12]|(?:sigma|tau)[xyz]{1,2})\b|[αβγδΔεθΘλΛμνξπΠρσΣτφΦχψΨωΩ×÷≠≈≤≥±∓∞∝∂∇∫∬∭∮∑∏√∛∜°∠⊥∥⇒⇔→←↔]/g;
 
 /** Renders a field whose entire raw value is LaTeX, such as a formula. */
 export default function LatexFormula({ value, className = '' }) {
