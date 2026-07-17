@@ -16,6 +16,14 @@ export async function generateWithGemini({ prompt, schema, signal, onProgress })
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
+export function generatedArray(response, key) {
+  const value = response?.[key];
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') return Object.values(value).filter((item) => item && typeof item === 'object');
+  console.error('[Gemini] Invalid generation response', { key, response });
+  throw new Error(`Gemini returned an invalid ${key} collection. Expected an array.`);
+}
+
 const string = { type: 'string' };
 export const flashcardSchema = { type: 'object', properties: { cards: { type: 'array', items: { type: 'object', properties: { subject: string, topic: string, question: string, answer: string, explanation: string, tags: { type: 'array', items: string }, difficulty: string } } } } };
 export const questionSchema = { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { subject: string, topic: string, question: string, choices: { type: 'array', items: string }, correctAnswer: string, explanation: string, difficulty: string, tags: { type: 'array', items: string }, situationTitle: string, situationDescription: string } } } } };

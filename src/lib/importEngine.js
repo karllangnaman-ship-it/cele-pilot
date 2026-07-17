@@ -8,7 +8,8 @@ export const blankQuestion = () => ({ subject: '', topic: '', difficulty: 'mediu
 
 export function normalizeItem(item, type, sourceType = 'imported') {
   const base = type === 'formula' ? blankFormula() : blankQuestion();
-  const choices = item.choices || [item.choiceA || item.A || '', item.choiceB || item.B || '', item.choiceC || item.C || '', item.choiceD || item.D || ''];
+  const rawChoices = item.choices ?? [item.choiceA || item.A || '', item.choiceB || item.B || '', item.choiceC || item.C || '', item.choiceD || item.D || ''];
+  const choices = Array.isArray(rawChoices) ? rawChoices : typeof rawChoices === 'string' ? rawChoices.split(/\s*\|\s*|\n/).filter(Boolean) : [];
   return { ...base, ...item, ...(type === 'question' ? { choices: choices.slice(0, 4) } : {}), sourceType, visibility: item.visibility || 'private', confidence: Number(item.confidence ?? 1) };
 }
 
