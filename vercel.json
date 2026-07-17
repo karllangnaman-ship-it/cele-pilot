@@ -2,6 +2,9 @@
   "functions": {
     "api/generatePlan.js": {
       "maxDuration": 60
+    },
+    "api/storage/[action].js": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

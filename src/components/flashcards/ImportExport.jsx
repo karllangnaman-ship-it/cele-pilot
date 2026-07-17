@@ -65,7 +65,7 @@ export default function ImportExport({ user, cards, onImported }) {
           subject: mapSubject(r.category || r.subject),
         }));
       } else if (['xlsx', 'xls'].includes(ext)) {
-        const { file_url } = await firebaseApi.integrations.Core.UploadFile({ file });
+        const { file_url } = await firebaseApi.integrations.Core.UploadFile({ file, folder: 'Flashcards' });
         const extracted = await firebaseApi.integrations.Core.ExtractDataFromUploadedFile({
           file_url,
           json_schema: {

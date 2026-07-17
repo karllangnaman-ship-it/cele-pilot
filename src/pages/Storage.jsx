@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion } from 'framer-motion';
-import { Upload, FolderPlus, Search, Trash2, Download, Eye, ArrowLeft, File, Folder, Image, FileText, Film, Music, MoreVertical, Edit2, Loader2 } from 'lucide-react';
+import { Upload, FolderPlus, Search, Trash2, Download, Eye, ArrowLeft, File, Folder, Image, FileText, Film, Music, MoreVertical, Edit2, Loader2, X } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
 import VideoPlayer from '@/components/VideoPlayer';
@@ -37,12 +37,14 @@ export default function Storage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadFileSize, setUploadFileSize] = useState(0);
+  const [uploadStats, setUploadStats] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
   const [renameDialog, setRenameDialog] = useState(null);
   const [newName, setNewName] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [folderDialog, setFolderDialog] = useState(false);
   const fileInputRef = useRef(null);
+  const uploadAbortRef = useRef(null);
   const { toast } = useToast();
 
   const handleVideoPositionSave = async (currentTime, duration) => {
@@ -65,13 +67,15 @@ export default function Storage() {
 
   const currentFiles = files.filter(f => {
     if (search) return f.name.toLowerCase().includes(search.toLowerCase());
-    return f.folder_path === currentPath;
+    return (f.folderPath || f.folder_path) === currentPath;
   });
 
-  const folders = currentFiles.filter(f => f.is_folder);
-  const regularFiles = currentFiles.filter(f => !f.is_folder);
+  const isFolder = (file) => file.isFolder || file.is_folder;
+  const storagePathFor = (file) => file.storagePath || file.storage_path;
+  const folders = currentFiles.filter(isFolder);
+  const regularFiles = currentFiles.filter(f => !isFolder(f));
 
-  const totalSize = files.filter(f => !f.is_folder).reduce((sum, f) => sum + (f.file_size || 0), 0);
+  const totalSize = files.filter(f => !isFolder(f)).reduce((sum, f) => sum + (f.size || f.file_size || 0), 0);
   const maxStorage = 1024 * 1024 * 1024 * 1024; // 1 TB
   const usedPct = Math.min(100, (totalSize / maxStorage) * 100);
 
@@ -82,41 +86,44 @@ export default function Storage() {
     setUploading(true);
     setUploadProgress(0);
 
-    for (let i = 0; i < fileList.length; i++) {
+    try { for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
       setUploadFileName(file.name);
       setUploadFileSize(file.size);
       setUploadProgress(Math.round(((i) / fileList.length) * 100));
 
-      const { file_url } = await firebaseApi.integrations.Core.UploadFile({ file });
+      const controller = new AbortController();
+      uploadAbortRef.current = controller;
+      const { path, bucket } = await firebaseApi.integrations.Core.UploadFile({ file, folder: `Cloud${currentPath}`, signal: controller.signal, onProgress: (stats) => { setUploadProgress(stats.progress); setUploadStats(stats); } });
       const created = await firebaseApi.entities.UserFile.create({
         user_id: user.id,
         name: file.name,
-        file_url,
-        file_size: file.size,
-        file_type: file.type,
-        folder_path: currentPath,
-        is_folder: false,
+        storagePath: path,
+        bucket,
+        size: file.size,
+        mimeType: file.type,
+        folderPath: currentPath,
+        isFolder: false,
       });
       setFiles(prev => [...prev, created]);
       setUploadProgress(Math.round(((i + 1) / fileList.length) * 100));
     }
-
-    setUploading(false);
-    setUploadProgress(0);
-    setUploadFileName('');
-    setUploadFileSize(0);
-    toast({ title: 'Upload complete!' });
-    e.target.value = '';
+      toast({ title: 'Upload complete!' });
+    } catch (caught) {
+      toast({ title: caught?.name === 'AbortError' ? 'Upload cancelled' : 'Upload failed', description: caught.message, variant: 'destructive' });
+    } finally {
+      setUploading(false); setUploadProgress(0); setUploadFileName(''); setUploadFileSize(0); setUploadStats(null); uploadAbortRef.current = null;
+      e.target.value = '';
+    }
   };
 
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
+    const name = newFolderName.trim();
+    const { path } = await firebaseApi.integrations.Core.CreateFolder({ path: `Cloud${currentPath}${name}` });
     const created = await firebaseApi.entities.UserFile.create({
       user_id: user.id,
-      name: newFolderName.trim(),
-      folder_path: currentPath,
-      is_folder: true,
+      name, folderPath: currentPath, isFolder: true, storagePath: path,
     });
     setFiles(prev => [...prev, created]);
     setNewFolderName('');
@@ -124,13 +131,20 @@ export default function Storage() {
   };
 
   const deleteFile = async (file) => {
+    const path = storagePathFor(file);
+    if (path) {
+      if (isFolder(file)) await firebaseApi.integrations.Core.DeleteFolder({ path });
+      else await firebaseApi.integrations.Core.DeleteFile({ path });
+    }
     await firebaseApi.entities.UserFile.delete(file.id);
     setFiles(prev => prev.filter(f => f.id !== file.id));
   };
 
   const renameFile = async () => {
     if (!newName.trim() || !renameDialog) return;
-    const updated = await firebaseApi.entities.UserFile.update(renameDialog.id, { name: newName.trim() });
+    const path = storagePathFor(renameDialog);
+    const moved = path && !isFolder(renameDialog) ? await firebaseApi.integrations.Core.RenameFile({ path, name: newName.trim() }) : null;
+    const updated = await firebaseApi.entities.UserFile.update(renameDialog.id, { name: newName.trim(), ...(moved?.path ? { storagePath: moved.path } : {}) });
     setFiles(prev => prev.map(f => f.id === renameDialog.id ? updated : f));
     setRenameDialog(null);
     setNewName('');
@@ -148,6 +162,22 @@ export default function Storage() {
   };
 
   const breadcrumbs = currentPath.split('/').filter(Boolean);
+  const openFile = async (file) => {
+    try {
+      const path = storagePathFor(file);
+      const url = path ? (await firebaseApi.integrations.Core.SignFileUrl({ path })).url : file.file_url;
+      if (!url) throw new Error('File location is unavailable.');
+      setPreviewFile({ ...file, file_url: url });
+    } catch (caught) { toast({ title: 'Unable to open file', description: caught.message, variant: 'destructive' }); }
+  };
+  const downloadFile = async (file) => {
+    try {
+      const path = storagePathFor(file);
+      const url = path ? (await firebaseApi.integrations.Core.DownloadFile({ path })).url : file.file_url;
+      if (!url) throw new Error('File location is unavailable.');
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (caught) { toast({ title: 'Unable to download file', description: caught.message, variant: 'destructive' }); }
+  };
 
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
@@ -188,9 +218,10 @@ export default function Storage() {
                 <span className="text-xs text-muted-foreground flex-shrink-0">{uploadFileSize ? formatSize(uploadFileSize) : ''}</span>
               </div>
               <Progress value={uploadProgress} className="h-2 mt-2" />
-              <p className="text-xs text-muted-foreground mt-1">{formatSize(maxStorage - totalSize)} remaining storage</p>
+              <p className="text-xs text-muted-foreground mt-1">{uploadStats?.speed ? `${formatSize(uploadStats.speed)}/s • ${Math.ceil(uploadStats.remainingTime || 0)}s remaining` : `${formatSize(maxStorage - totalSize)} remaining storage`}</p>
             </div>
             <span className="text-sm font-semibold text-primary flex-shrink-0">{uploadProgress}%</span>
+            <button aria-label="Cancel upload" onClick={() => uploadAbortRef.current?.abort()} className="p-2 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
           </div>
         </div>
       )}
@@ -258,13 +289,11 @@ export default function Storage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatSize(file.file_size)}</p>
+                  <p className="text-xs text-muted-foreground">{formatSize(file.size || file.file_size)}</p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setPreviewFile(file)} className="p-2 rounded-lg hover:bg-muted transition-colors"><Eye className="w-4 h-4" /></button>
-                  {file.file_url && (
-                    <a href={file.file_url} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg hover:bg-muted transition-colors"><Download className="w-4 h-4" /></a>
-                  )}
+                  <button onClick={() => openFile(file)} className="p-2 rounded-lg hover:bg-muted transition-colors"><Eye className="w-4 h-4" /></button>
+                  <button onClick={() => downloadFile(file)} className="p-2 rounded-lg hover:bg-muted transition-colors"><Download className="w-4 h-4" /></button>
                   <DropdownMenu>
                     <DropdownMenuTrigger className="p-2 rounded-lg hover:bg-muted transition-colors"><MoreVertical className="w-4 h-4" /></DropdownMenuTrigger>
                     <DropdownMenuContent>

@@ -27,13 +27,8 @@ import {
   limit,
   startAfter,
 } from 'firebase/firestore';
-import {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-} from 'firebase/storage';
-import { auth, db, storage, googleProvider, firebaseInitializationError } from '@/firebase';
+import { auth, db, googleProvider, firebaseInitializationError } from '@/firebase';
+import { supabaseStorage } from '@/services/supabaseStorage';
 
 const normalizeUser = (user) => {
   if (!user) return null;
@@ -281,7 +276,7 @@ const getGeminiErrorMessage = async (response) => {
   }
 };
 
-const invokeGemini = async ({ prompt, file_urls = [], response_json_schema }) => {
+const invokeGemini = async ({ prompt, file_urls = [], response_json_schema, timeoutMs = 0 }) => {
   const systemPrompt = 'You are a helpful CELE study planner. Return valid JSON only when requested.';
   const userPrompt = file_urls.length > 0 ? `${prompt}\n\nAdditional file references:\n${file_urls.join('\n')}` : prompt;
 
@@ -299,13 +294,22 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema }) =>
     payload.response_format = { type: 'json_object' };
   }
 
-  const response = await fetch('/api/generatePlan', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let response;
+  try {
+    response = await fetch('/api/generatePlan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('Gemini extraction timed out after 60 seconds. Please try again.');
+    throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const errorMessage = await getGeminiErrorMessage(response);
@@ -323,24 +327,19 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema }) =>
 };
 
 const coreIntegrations = {
-  async UploadFile({ file }) {
+  async UploadFile({ file, timeoutMs = 0, folder = 'Cloud', onProgress, signal }) {
     const uid = await getUserId();
-    const storagePath = `users/${uid}/${Date.now()}_${file.name}`;
-    const storageRef = ref(storage, storagePath);
-    const task = uploadBytesResumable(storageRef, file);
-    await new Promise((resolve, reject) => {
-      task.on(
-        'state_changed',
-        () => {},
-        reject,
-        resolve
-      );
-    });
-    const file_url = await getDownloadURL(storageRef);
-    return { file_url, path: storagePath };
+    return supabaseStorage.upload({ file, uid, folder, timeoutMs, onProgress, signal });
   },
-  async ExtractDataFromUploadedFile({ file_url, json_schema }) {
-    const response = await fetch(file_url);
+  async DeleteFile({ path }) { return supabaseStorage.remove(path); },
+  async SignFileUrl({ path, expiresIn }) { return supabaseStorage.signUrl(path, expiresIn); },
+  async DownloadFile({ path }) { return supabaseStorage.download(path); },
+  async RenameFile({ path, name }) { return supabaseStorage.rename(path, name); },
+  async CreateFolder({ path }) { return supabaseStorage.createFolder(path); },
+  async DeleteFolder({ path }) { return supabaseStorage.deleteFolder(path); },
+  async ExtractDataFromUploadedFile({ file_url, storagePath, json_schema }) {
+    const privateUrl = file_url || (await supabaseStorage.signUrl(storagePath)).url;
+    const response = await fetch(privateUrl);
     const contentText = await response.text();
     return invokeGemini({
       prompt: `Extract structured data from the provided file content. Return valid JSON matching the requested schema.\n\nContent:\n${contentText}`,
@@ -352,8 +351,8 @@ const coreIntegrations = {
       prompt: `Transcribe the supplied audio content into text. Return only the transcription.\n\nAudio URL: ${audio_url}`,
     });
   },
-  async InvokeLLM({ prompt, response_json_schema, file_urls = [] }) {
-    return invokeGemini({ prompt, file_urls, response_json_schema });
+  async InvokeLLM({ prompt, response_json_schema, file_urls = [], timeoutMs = 0 }) {
+    return invokeGemini({ prompt, file_urls, response_json_schema, timeoutMs });
   },
 };
 

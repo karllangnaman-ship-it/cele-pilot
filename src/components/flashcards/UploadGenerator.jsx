@@ -82,7 +82,7 @@ export default function UploadGenerator({ user, onSaved }) {
     for (const file of files) {
       setProgressStep(0);
       try {
-        const { file_url } = await firebaseApi.integrations.Core.UploadFile({ file });
+        const { file_url } = await firebaseApi.integrations.Core.UploadFile({ file, folder: 'Flashcards' });
         setProgressStep(1);
 
         const ext = file.name.split('.').pop().toLowerCase();
