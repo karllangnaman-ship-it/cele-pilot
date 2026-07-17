@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { LatexText } from "@/components/LatexFormula";
 
 // The one shared figure viewer. Never replaces an image with an error placeholder:
 // a remote image can still load after a transient network/CORS/cache failure.
@@ -88,7 +89,7 @@ export default function RemoteFigure({ url, label = "Figure" }) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-5xl">
           <DialogHeader>
-            <DialogTitle>{label}</DialogTitle>
+            <DialogTitle><LatexText value={label} /></DialogTitle>
           </DialogHeader>
           <div
             id="remote-figure-viewer"

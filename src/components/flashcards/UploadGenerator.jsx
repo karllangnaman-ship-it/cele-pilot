@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { UploadCloud, FileText, Loader2, Check, X, Sparkles, Save } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { LatexText } from '@/components/LatexFormula';
 
 const ACCEPTED = '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.json,.txt,.md,.jpg,.jpeg,.png,.webp,.mp3,.wav,.m4a,.zip';
 const AUDIO_EXT = ['mp3', 'wav', 'm4a', 'oga', 'ogg', 'webm', 'flac'];
@@ -260,7 +261,7 @@ export default function UploadGenerator({ user, onSaved }) {
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">{card.subject}</span>
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{card.card_type}</span>
                         </div>
-                        <p className="text-sm font-medium">{card.question}</p>
+                        <p className="text-sm font-medium"><LatexText value={card.question} /></p>
                         <p className="text-xs text-muted-foreground mt-1" dangerouslySetInnerHTML={{ __html: (card.answer || '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
                       </div>
                     </div>

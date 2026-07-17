@@ -382,7 +382,7 @@ export default function ContentLibrary({ type }) {
               <LatexText value={item.question} />
             </h3>
             <p className="text-xs text-muted-foreground">
-              {item.subject} · {item.topic}
+              <LatexText value={item.subject} /> · <LatexText value={item.topic} />
             </p>
           </div>
           <div className="flex">
@@ -555,12 +555,12 @@ export default function ContentLibrary({ type }) {
                 >
                   <div>
                     <h2 className="font-semibold">
-                      {situation.externalId || "Situation"}
-                      {situation.title ? ` — ${situation.title}` : ""}
+                      <LatexText value={situation.externalId || "Situation"} />
+                      {situation.title && <> — <LatexText value={situation.title} /></>}
                     </h2>
                     {situation.description && (
                       <p className="mt-2 whitespace-pre-wrap text-sm">
-                        {situation.description}
+                        <LatexText value={situation.description} />
                       </p>
                     )}
                   </div>
@@ -624,6 +624,11 @@ export default function ContentLibrary({ type }) {
                           i === index ? { ...entry, [key]: value } : entry,
                         ),
                       ),
+                    )}
+                    {item[key] && (
+                      <div className="mt-1 rounded bg-muted/40 p-2 text-sm">
+                        <LatexText value={Array.isArray(item[key]) ? item[key].join(" | ") : item[key]} />
+                      </div>
                     )}
                   </div>
                 ))}
@@ -743,6 +748,7 @@ export default function ContentLibrary({ type }) {
               <div key={key}>
                 <Label>{label}</Label>
                 {fieldInput(draft[key], key, (value) => setField(key, value))}
+                {draft[key] && <div className="mt-1 rounded bg-muted/40 p-2 text-sm"><LatexText value={Array.isArray(draft[key]) ? draft[key].join(" | ") : draft[key]} /></div>}
               </div>
             ))}
             <Button onClick={save} className="w-full">

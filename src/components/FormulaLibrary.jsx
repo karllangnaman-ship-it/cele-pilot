@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import FormulaCard from "@/components/FormulaCard";
+import LatexFormula, { LatexText } from "@/components/LatexFormula";
 import ImportExport from "@/components/flashcards/ImportExport";
 import SearchBar from "@/components/content/SearchBar";
 import SubjectFilter from "@/components/content/SubjectFilter";
@@ -507,7 +508,7 @@ export default function FormulaLibrary() {
   const folderHeader = (subject, folder, subFolder = "") => (
     <div className="flex items-center gap-1">
       <h3 className={subFolder ? "font-medium text-sm" : "font-semibold"}>
-        {subFolder || folder}
+        <LatexText value={subFolder || folder} />
       </h3>
       <Button
         aria-label="Rename folder"
@@ -576,7 +577,7 @@ export default function FormulaLibrary() {
         <div className="space-y-5">
           {hierarchy.map(([subject, group]) => (
             <section key={subject} className="glass-card p-4">
-              <h2 className="text-lg font-bold">{subject}</h2>
+              <h2 className="text-lg font-bold"><LatexText value={subject} /></h2>
               {group.direct.length > 0 && (
                 <div className="mt-3 grid gap-3 lg:grid-cols-2">
                   {group.direct.map((item) => (
@@ -591,8 +592,8 @@ export default function FormulaLibrary() {
               {[...group.folders.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, node]) => {
                 const topicKey = `${subject}\u0000${folder}`;
                 return <Collapsible key={folder} open={expandedTopic === topicKey} onOpenChange={(open) => { setExpandedTopic(open ? topicKey : ''); setExpandedSubTopic(''); }} className="mt-4 border-l-2 border-primary/30 pl-4">
-                  <div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-4 w-4 transition-transform ${expandedTopic === topicKey ? 'rotate-180' : ''}`} /><span className="font-semibold">{folder}</span></CollapsibleTrigger>{folderHeader(subject, folder).props.children.slice(1)}</div>
-                  <CollapsibleContent>{node.direct.length > 0 && <div className="mt-3 grid gap-3 lg:grid-cols-2">{node.direct.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} />)}</div>}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium">{subFolder}</span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent><div className="mt-2 grid gap-3 lg:grid-cols-2">{subItems.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} />)}</div></CollapsibleContent></Collapsible>; })}</CollapsibleContent>
+                  <div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-4 w-4 transition-transform ${expandedTopic === topicKey ? 'rotate-180' : ''}`} /><span className="font-semibold"><LatexText value={folder} /></span></CollapsibleTrigger>{folderHeader(subject, folder).props.children.slice(1)}</div>
+                  <CollapsibleContent>{node.direct.length > 0 && <div className="mt-3 grid gap-3 lg:grid-cols-2">{node.direct.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} />)}</div>}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent><div className="mt-2 grid gap-3 lg:grid-cols-2">{subItems.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} />)}</div></CollapsibleContent></Collapsible>; })}</CollapsibleContent>
                 </Collapsible>;
               })}
             </section>
@@ -657,7 +658,7 @@ export default function FormulaLibrary() {
           {aiPreview.map((item, index) => (
             <div className="border-b py-3" key={index}>
               <div className="flex justify-between">
-                <b>{item.name}</b>
+                <b><LatexText value={item.name} /></b>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -695,6 +696,7 @@ export default function FormulaLibrary() {
                   )
                 }
               />
+              <LatexFormula value={item.formula} className="mt-2 rounded bg-muted/40 px-2" />
             </div>
           ))}
           <div className="flex gap-2">
@@ -743,6 +745,7 @@ export default function FormulaLibrary() {
                     onChange={(event) => setField(key, event.target.value)}
                   />
                 )}
+                {draft[key] && (key === "formula" ? <LatexFormula value={draft[key]} className="mt-1 rounded bg-muted/40 px-2" /> : <div className="mt-1 rounded bg-muted/40 p-2 text-sm"><LatexText value={draft[key]} /></div>)}
               </div>
             ))}
           </div>

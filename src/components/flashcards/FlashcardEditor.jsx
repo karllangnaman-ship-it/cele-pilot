@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Sparkles, Wand2, Minimize2, Lightbulb, TrendingUp, TrendingDown, Copy, Trash2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { LatexText } from '@/components/LatexFormula';
 
 const CARD_TYPES = [
   { value: 'qa', label: 'Question & Answer' },
@@ -77,14 +78,17 @@ export default function FlashcardEditor({ card, open, onClose, onSave, onDelete,
           <div>
             <Label>Question</Label>
             <Textarea value={draft.question || ''} onChange={e => setDraft(p => ({ ...p, question: e.target.value }))} rows={2} />
+            {draft.question && <div className="mt-1 rounded bg-muted/40 p-2 text-sm"><LatexText value={draft.question} /></div>}
           </div>
           <div>
             <Label>Answer</Label>
             <Textarea value={draft.answer || ''} onChange={e => setDraft(p => ({ ...p, answer: e.target.value }))} rows={3} />
+            {draft.answer && <div className="mt-1 rounded bg-muted/40 p-2 text-sm"><LatexText value={draft.answer} /></div>}
           </div>
           <div>
             <Label>Explanation (optional)</Label>
             <Textarea value={draft.explanation || ''} onChange={e => setDraft(p => ({ ...p, explanation: e.target.value }))} rows={2} />
+            {draft.explanation && <div className="mt-1 rounded bg-muted/40 p-2 text-sm"><LatexText value={draft.explanation} /></div>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

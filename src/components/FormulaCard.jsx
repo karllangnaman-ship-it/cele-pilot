@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import LatexFormula, { LatexText } from "@/components/LatexFormula";
+import LatexFormula, { LatexInline, LatexText } from "@/components/LatexFormula";
 import RemoteFigure from "@/components/RemoteFigure";
 
 const parseVariables = (formula) => {
@@ -45,9 +45,9 @@ export default function FormulaCard({ formula, actions }) {
             <LatexText value={formula.name} />
           </h2>
           <p className="text-xs text-muted-foreground">
-            {formula.subject}
-            {folder ? ` · ${folder}` : ""}
-            {subFolder ? ` · ${subFolder}` : ""}
+            <LatexText value={formula.subject} />
+            {folder && <> · <LatexText value={folder} /></>}
+            {subFolder && <> · <LatexText value={subFolder} /></>}
           </p>
         </div>
         {actions}
@@ -69,15 +69,16 @@ export default function FormulaCard({ formula, actions }) {
           <p className="font-medium">Where:</p>
           <dl className="mt-1 space-y-1">
             {variables.map((item, index) => (
-              <div className="grid grid-cols-[auto_1fr_auto] gap-2" key={index}>
-                <dt>
-                  <LatexText value={item.symbol} />
+              <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-baseline gap-2" key={index}>
+                <dt className="min-w-5">
+                  <LatexInline value={item.symbol} />
                 </dt>
+                <span aria-hidden="true">-</span>
                 <dd>
                   <LatexText value={item.meaning} />
                 </dd>
-                <dd className="text-muted-foreground">
-                  <LatexText value={`(${item.unit})`} />
+                <dd className="justify-self-end whitespace-nowrap text-muted-foreground">
+                  (<LatexInline value={item.unit} />)
                 </dd>
               </div>
             ))}
@@ -98,8 +99,7 @@ export default function FormulaCard({ formula, actions }) {
       )}
       {formula.tags?.length > 0 && (
         <div className="mt-2 text-xs text-muted-foreground">
-          Tags:{" "}
-          {Array.isArray(formula.tags) ? formula.tags.join(", ") : formula.tags}
+          Tags: <LatexText value={Array.isArray(formula.tags) ? formula.tags.join(", ") : formula.tags} />
         </div>
       )}
     </article>
