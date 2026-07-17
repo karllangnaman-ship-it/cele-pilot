@@ -161,6 +161,7 @@ const buildEntityMap = () => ({
   DailyReview: getEntityApi('dailyReviews'),
   Formula: getEntityApi('formulas'),
   Question: getEntityApi('questions'),
+  Situation: getEntityApi('situations'),
   Import: getEntityApi('imports'),
   ExamResult: getEntityApi('examResults'),
   PracticeHistory: getEntityApi('practiceHistory'),
