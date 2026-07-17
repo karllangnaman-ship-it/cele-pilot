@@ -337,6 +337,7 @@ export default function FormulaLibrary() {
         prompt: `You are a precise professional civil engineering formula librarian. ${request} Subject: ${aiConfig.subject}. Difficulty: ${aiConfig.difficulty}. ${aiConfig.topic ? `Topic: ${aiConfig.topic}.` : "Choose an appropriate topic."} ${aiConfig.subTopic ? `Sub Topic: ${aiConfig.subTopic}.` : ""} Return JSON only with an items array. Every item must include subject, folder (Topic), subFolder (Sub Topic when applicable), name, formula in valid LaTeX without dollar delimiters, a concise description, reference, tags array, difficulty, an optional figure suggestion in figureUrl only when genuinely useful, engineering meaning in remarks, and up to five complete variableSymbolN, variableMeaningN, variableUnitN entries. Ensure variable definitions and units are technically correct.`,
       });
       const generated = generatedArray(result, "items");
+      generated.forEach((item) => console.info('[Formula] returned figureUrl', { formulaName: item.name, figureUrl: item.figureUrl || item.imageUrl || null }));
       setAiPreview(
         generated.map((item) => ({
           ...blankFormula(),
@@ -346,6 +347,7 @@ export default function FormulaLibrary() {
             : aiConfig.subject,
           folder: item.folder || aiConfig.topic,
           subFolder: item.subFolder || aiConfig.subTopic,
+          figureUrl: item.figureUrl || item.imageUrl || "",
           difficulty: item.difficulty || aiConfig.difficulty,
           tags: Array.isArray(item.tags) ? item.tags : [],
         })),
