@@ -5,7 +5,7 @@ import FigureViewer from "@/components/FigureViewer";
 import EngineeringIllustration from '@/components/EngineeringIllustration';
 
 const parseVariables = (formula) => {
-  const defined = Array.from({ length: 5 }, (_, index) => {
+  const defined = Array.from({ length: 10 }, (_, index) => {
     const n = index + 1;
     return {
       symbol: formula[`variableSymbol${n}`],

@@ -101,6 +101,21 @@ const configs = {
       "Variable Symbol 5",
       "Variable Meaning 5",
       "Variable Unit 5",
+      "Variable Symbol 6",
+      "Variable Meaning 6",
+      "Variable Unit 6",
+      "Variable Symbol 7",
+      "Variable Meaning 7",
+      "Variable Unit 7",
+      "Variable Symbol 8",
+      "Variable Meaning 8",
+      "Variable Unit 8",
+      "Variable Symbol 9",
+      "Variable Meaning 9",
+      "Variable Unit 9",
+      "Variable Symbol 10",
+      "Variable Meaning 10",
+      "Variable Unit 10",
     ],
     sample: [
       {
@@ -146,7 +161,7 @@ const configs = {
       Difficulty: item.difficulty || "",
       Order: Number.isFinite(item.order) ? item.order : "",
       ...Object.fromEntries(
-        Array.from({ length: 5 }, (_, i) => {
+        Array.from({ length: 10 }, (_, i) => {
           const n = i + 1;
           return [
             [`Variable Symbol ${n}`, item[`variableSymbol${n}`] || ""],

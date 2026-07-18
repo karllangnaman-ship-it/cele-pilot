@@ -185,7 +185,7 @@ export default function FormulaLibrary() {
       const matchesSubject =
         subjectFilter === "all" || item.subject === subjectFilter;
       const variables = Array.from(
-        { length: 5 },
+        { length: 10 },
         (_, i) => item[`variableMeaning${i + 1}`],
       );
       const searchable = [
@@ -366,7 +366,7 @@ export default function FormulaLibrary() {
         signal: controller.signal,
         onProgress: setAiStatus,
         schema: formulaSchema,
-        prompt: `You are a precise professional civil engineering formula librarian. ${request} Subject: ${aiConfig.subject}. Difficulty: ${aiConfig.difficulty}. ${aiConfig.topic ? `Topic: ${aiConfig.topic}.` : "Choose an appropriate topic."} ${aiConfig.subTopic ? `Sub Topic: ${aiConfig.subTopic}.` : ""} Return JSON only with an items array. Every item must include subject, folder (Topic), subFolder (Sub Topic when applicable), name, formula in valid LaTeX without dollar delimiters, a concise description, reference, tags array, difficulty, an optional figureLabel and figureUrl only when genuinely useful, engineering meaning in remarks, and up to five complete variableSymbolN, variableMeaningN, variableUnitN entries. Ensure variable definitions and units are technically correct.`,
+        prompt: `You are a precise professional civil engineering formula librarian. ${request} Subject: ${aiConfig.subject}. Difficulty: ${aiConfig.difficulty}. ${aiConfig.topic ? `Topic: ${aiConfig.topic}.` : "Choose an appropriate topic."} ${aiConfig.subTopic ? `Sub Topic: ${aiConfig.subTopic}.` : ""} Return JSON only with an items array. Every item must include subject, folder (Topic), subFolder (Sub Topic when applicable), name, formula in valid LaTeX without dollar delimiters, a concise description, reference, tags array, difficulty, an optional figureLabel and figureUrl only when genuinely useful, engineering meaning in remarks, and up to ten complete variableSymbolN, variableMeaningN, variableUnitN entries. Ensure variable definitions and units are technically correct.`,
       });
       const generated = generatedArray(result, "items");
       generated.forEach((item) => console.info('[Formula] returned figureUrl', { formulaName: item.name, figureUrl: item.figureUrl || item.imageUrl || null }));
@@ -885,7 +885,7 @@ export default function FormulaLibrary() {
               </span>
             </p>
             <div className="space-y-2">
-              {Array.from({ length: 5 }, (_, index) => {
+              {Array.from({ length: 10 }, (_, index) => {
                 const n = index + 1;
                 return (
                   <div
