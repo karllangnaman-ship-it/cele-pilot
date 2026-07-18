@@ -141,6 +141,11 @@ const getEntityApi = (collectionName) => ({
     await batch.commit();
     return created;
   },
+  subscribe(callback) {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return () => {};
+    return onSnapshot(getUserCollectionRef(uid, collectionName), (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))), (error) => { console.error(`Realtime ${collectionName} subscription failed.`, error); });
+  },
 });
 
 const buildEntityMap = () => ({
@@ -263,6 +268,18 @@ const studyHistory = {
       console.error('Unable to start study history realtime subscription.', error);
       return () => {};
     }
+  },
+  async delete(id) {
+    const uid = await getUserId();
+    await deleteDoc(getUserDocRef(uid, 'studyHistory', id));
+    return true;
+  },
+  async bulkDelete(ids) {
+    const uid = await getUserId();
+    const batch = writeBatch(db);
+    ids.forEach((id) => batch.delete(getUserDocRef(uid, 'studyHistory', id)));
+    await batch.commit();
+    return true;
   },
 };
 
