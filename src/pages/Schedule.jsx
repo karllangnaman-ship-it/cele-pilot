@@ -1,4 +1,4 @@
-import React, { Component, useState, useEffect, useCallback } from 'react';
+import React, { Component, useState, useEffect, useCallback, useRef } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
 import { Button } from '@/components/ui/button';
 import { format, addDays, parseISO, differenceInCalendarDays, isValid } from 'date-fns';
@@ -141,6 +141,20 @@ class ScheduleErrorBoundary extends Component {
   }
 }
 
+const ScheduleTask = React.memo(function ScheduleTask({ task, index, onToggleComplete, onSkip, onEdit, onDelete }) {
+  return <motion.div
+    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.03 }}
+    className={`glass-card p-4 flex items-center gap-3 transition-all ${task.completed ? 'opacity-50' : ''} ${task.skipped ? 'opacity-30' : ''}`}
+  >
+    <button type="button" aria-label={`${task.completed ? 'Mark incomplete' : 'Mark complete'}: ${task.title}`} aria-pressed={task.completed} onClick={() => onToggleComplete(task)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${task.completed ? 'bg-primary border-primary' : 'border-muted-foreground/30 hover:border-primary'}`}>
+      {task.completed && <Check className="w-3 h-3 text-primary-foreground" />}
+    </button>
+    <div className={`w-1.5 h-10 rounded-full flex-shrink-0 ${task.is_manual ? (COLOR_CLASSES[task.color_label] || 'bg-gray-500') : (typeColor[task.type] || 'bg-gray-500')}`} />
+    <div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className={`text-sm font-medium ${task.completed ? 'line-through' : ''}`}>{task.title}</p>{task.is_manual && task.priority && <span className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[task.priority]}`} title={`${task.priority} priority`} />}</div><div className="flex items-center gap-2 mt-0.5 flex-wrap"><span className="text-xs text-muted-foreground">{task.time_start} – {task.time_end}</span>{task.subject && <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary">{task.subject}</span>}{task.topic && <span className="text-xs text-muted-foreground">{task.topic}</span>}{task.is_manual && <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Manual</span>}</div></div>
+    <div className="flex items-center gap-1">{!task.completed && !task.skipped && task.type === 'study' && <Link to={`/timer?subject=${encodeURIComponent(task.subject || '')}&topic=${encodeURIComponent(task.topic || '')}&duration=${task.duration_minutes}&taskId=${task.id}`}><button type="button" className="p-2 rounded-lg hover:bg-muted transition-colors" aria-label="Start timer"><Clock className="w-4 h-4 text-primary" /></button></Link>}{task.is_manual && <><button type="button" onClick={() => onEdit(task)} className="p-2 rounded-lg hover:bg-muted transition-colors" aria-label="Edit task"><Edit2 className="w-4 h-4 text-muted-foreground" /></button><button type="button" onClick={() => onDelete(task)} className="p-2 rounded-lg hover:bg-muted transition-colors" aria-label="Delete task"><Trash2 className="w-4 h-4 text-destructive" /></button></>}{!task.completed && !task.skipped && !task.is_manual && <button type="button" onClick={() => onSkip(task)} className="p-2 rounded-lg hover:bg-muted transition-colors" aria-label="Skip task"><SkipForward className="w-4 h-4 text-muted-foreground" /></button>}</div>
+  </motion.div>;
+});
+
 export default function Schedule() {
   return (
     <ScheduleErrorBoundary>
@@ -153,8 +167,6 @@ function ScheduleContent() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [tasks, setTasks] = useState([]);
-  const [loadedTaskDate, setLoadedTaskDate] = useState(null);
   const [allTasks, setAllTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -165,6 +177,7 @@ function ScheduleContent() {
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const { toast } = useToast();
   const { triggerAchievement } = useAchievement();
+  const updateVersion = useRef(new Map());
 
   useEffect(() => {
     async function init() {
@@ -177,20 +190,6 @@ function ScheduleContent() {
     init();
   }, []);
 
-  const loadTasks = useCallback(async () => {
-    if (!user) return;
-    try {
-      const items = await firebaseApi.entities.StudyTask.filter({ user_id: user.id, date: selectedDate });
-      const safeTasks = asArray(items).filter(Boolean).sort((a, b) => (a.time_start || '').localeCompare(b.time_start || ''));
-      setTasks(safeTasks);
-    } catch (error) {
-      console.error('[schedule] failed to load tasks', { selectedDate, error });
-      setTasks([]);
-    } finally {
-      setLoadedTaskDate(selectedDate);
-    }
-  }, [user, selectedDate]);
-
   const loadAllTasks = useCallback(async () => {
     if (!user) return;
     const items = await firebaseApi.entities.StudyTask.filter({ user_id: user.id });
@@ -198,7 +197,6 @@ function ScheduleContent() {
   }, [user]);
 
   useEffect(() => { if (user) loadAllTasks(); }, [user, loadAllTasks]);
-  useEffect(() => { if (user) loadTasks(); }, [user, selectedDate, loadTasks]);
   useEffect(() => {
     if (!user) return;
     firebaseApi.entities.DailyAISchedule.filter({ user_id: user.id, date: selectedDate })
@@ -387,7 +385,6 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
     });
     setCoachRecord(record);
 
-    loadTasks();
     loadAllTasks();
     triggerAchievement(`schedule_generated_${selectedDate}`, undefined, `Your personalized CELE study plan for ${format(parseISO(selectedDate), 'MMMM d')} is ready!`);
     } catch (error) {
@@ -397,20 +394,31 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
     }
   };
 
-  const toggleComplete = async (task) => {
-    await firebaseApi.entities.StudyTask.update(task.id, { completed: !task.completed });
-    loadTasks();
-    loadAllTasks();
-    if (!task.completed && task.subject) {
+  const toggleComplete = useCallback(async (task) => {
+    const previousCompleted = Boolean(task.completed);
+    const completed = !previousCompleted;
+    const version = crypto.randomUUID();
+    updateVersion.current.set(task.id, version);
+    setAllTasks((current) => current.map((item) => item.id === task.id ? { ...item, completed } : item));
+    if (completed && task.subject) {
       triggerAchievement(`complete_${task.subject}_${selectedDate}`, undefined, `You completed today's ${task.subject} session! Keep going!`);
     }
-  };
+    try {
+      await firebaseApi.entities.StudyTask.update(task.id, { completed });
+    } catch (error) {
+      if (updateVersion.current.get(task.id) === version) {
+        setAllTasks((current) => current.map((item) => item.id === task.id ? { ...item, completed: previousCompleted } : item));
+        toast({ title: 'Unable to update task', description: 'Please try again.', variant: 'destructive' });
+      }
+    } finally {
+      if (updateVersion.current.get(task.id) === version) updateVersion.current.delete(task.id);
+    }
+  }, [selectedDate, toast, triggerAchievement]);
 
-  const skipTask = async (task) => {
+  const skipTask = useCallback(async (task) => {
     await firebaseApi.entities.StudyTask.update(task.id, { skipped: true });
-    loadTasks();
     loadAllTasks();
-  };
+  }, [loadAllTasks]);
 
   const handleSaveManualTask = async (taskData) => {
     if (editingTask) {
@@ -422,16 +430,19 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
     }
     setManualDialogOpen(false);
     setEditingTask(null);
-    loadTasks();
     loadAllTasks();
   };
 
-  const handleDeleteTask = async (task) => {
+  const handleDeleteTask = useCallback(async (task) => {
     await firebaseApi.entities.StudyTask.delete(task.id);
-    loadTasks();
     loadAllTasks();
     toast({ title: 'Task deleted' });
-  };
+  }, [loadAllTasks, toast]);
+
+  const openEditTask = useCallback((task) => {
+    setEditingTask(task);
+    setManualDialogOpen(true);
+  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
@@ -448,7 +459,7 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
     );
   }
 
-  const dayTasks = loadedTaskDate === selectedDate ? asArray(tasks).filter(Boolean) : [];
+  const dayTasks = allTasks.filter((task) => task.date === selectedDate).sort((a, b) => (a.time_start || '').localeCompare(b.time_start || ''));
   const matchingSelectedSchedule = selectedSchedule?.date === selectedDate ? selectedSchedule : null;
   const storedScheduleTasks = asArray(matchingSelectedSchedule?.tasks ?? matchingSelectedSchedule?.schedule);
   const hasStoredSchedule = Boolean(matchingSelectedSchedule && Array.isArray(matchingSelectedSchedule.tasks ?? matchingSelectedSchedule.schedule));
@@ -552,54 +563,7 @@ Return JSON with tasks, ai_summary (specific 2-4 sentence coach note), daily_mot
             </div>
           ) : (
             <div className="space-y-2">
-              {displayTasks.map((task, i) => (
-                <motion.div
-                  key={task.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  className={`glass-card p-4 flex items-center gap-3 transition-all ${task.completed ? 'opacity-50' : ''} ${task.skipped ? 'opacity-30' : ''}`}
-                >
-                  <button onClick={() => toggleComplete(task)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${task.completed ? 'bg-primary border-primary' : 'border-muted-foreground/30 hover:border-primary'}`}>
-                    {task.completed && <Check className="w-3 h-3 text-primary-foreground" />}
-                  </button>
-                  <div className={`w-1.5 h-10 rounded-full flex-shrink-0 ${task.is_manual ? (COLOR_CLASSES[task.color_label] || 'bg-gray-500') : (typeColor[task.type] || 'bg-gray-500')}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className={`text-sm font-medium ${task.completed ? 'line-through' : ''}`}>{task.title}</p>
-                      {task.is_manual && task.priority && (
-                        <span className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[task.priority]}`} title={`${task.priority} priority`} />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className="text-xs text-muted-foreground">{task.time_start} – {task.time_end}</span>
-                      {task.subject && <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary">{task.subject}</span>}
-                      {task.topic && <span className="text-xs text-muted-foreground">{task.topic}</span>}
-                      {task.is_manual && <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Manual</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {!task.completed && !task.skipped && task.type === 'study' && (
-                      <Link to={`/timer?subject=${encodeURIComponent(task.subject || '')}&topic=${encodeURIComponent(task.topic || '')}&duration=${task.duration_minutes}&taskId=${task.id}`}>
-                        <button className="p-2 rounded-lg hover:bg-muted transition-colors"><Clock className="w-4 h-4 text-primary" /></button>
-                      </Link>
-                    )}
-                    {task.is_manual && (
-                      <>
-                        <button onClick={() => { setEditingTask(task); setManualDialogOpen(true); }} className="p-2 rounded-lg hover:bg-muted transition-colors">
-                          <Edit2 className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                        <button onClick={() => handleDeleteTask(task)} className="p-2 rounded-lg hover:bg-muted transition-colors">
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </button>
-                      </>
-                    )}
-                    {!task.completed && !task.skipped && !task.is_manual && (
-                      <button onClick={() => skipTask(task)} className="p-2 rounded-lg hover:bg-muted transition-colors"><SkipForward className="w-4 h-4 text-muted-foreground" /></button>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
+              {displayTasks.map((task, index) => <ScheduleTask key={task.id} task={task} index={index} onToggleComplete={toggleComplete} onSkip={skipTask} onEdit={openEditTask} onDelete={handleDeleteTask} />)}
             </div>
           )}
         </>
