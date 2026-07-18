@@ -391,6 +391,17 @@ const invokeGemini = async ({ prompt, file_urls = [], response_json_schema, time
 };
 
 const coreIntegrations = {
+  async GenerateEngineeringIllustration({ prompt, signal }) {
+    const uid = await getUserId();
+    const response = await fetch('/api/generateIllustration', {
+      method: 'POST', signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` },
+      body: JSON.stringify({ prompt, user_id: uid }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.success || typeof data.imageUrl !== 'string') throw new Error(data.error || 'Illustration generation failed.');
+    return data.imageUrl;
+  },
   async UploadFile({ file, timeoutMs = 0, folder = 'Cloud', onProgress, signal }) {
     const uid = await getUserId();
     return supabaseStorage.upload({ file, folder, timeoutMs, onProgress, signal });

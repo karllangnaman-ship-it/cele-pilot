@@ -3,6 +3,9 @@
     "api/generatePlan.js": {
       "maxDuration": 60
     },
+    "api/generateIllustration.js": {
+      "maxDuration": 60
+    },
     "api/storage/[action].js": {
       "maxDuration": 60
     }

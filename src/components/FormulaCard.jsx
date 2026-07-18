@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import LatexFormula, { LatexInline, LatexText } from "@/components/LatexFormula";
 import RemoteFigure from "@/components/RemoteFigure";
+import EngineeringIllustration from '@/components/EngineeringIllustration';
 
 const parseVariables = (formula) => {
   const defined = Array.from({ length: 5 }, (_, index) => {
@@ -24,7 +25,7 @@ const parseVariables = (formula) => {
         .filter((item) => item.symbol && item.meaning && item.unit);
 };
 
-export default function FormulaCard({ formula, actions }) {
+export default function FormulaCard({ formula, actions, onRegenerateIllustration, illustrating }) {
   const variables = parseVariables(formula);
   const folder = formula.folder || formula.topic;
   const subFolder = formula.subFolder || formula.subtopic;
@@ -64,6 +65,7 @@ export default function FormulaCard({ formula, actions }) {
           <LatexText value={formula.description} />
         </div>
       )}
+      {(formula.engineeringIllustrationUrl || illustrating) && <EngineeringIllustration imageUrl={formula.engineeringIllustrationUrl} caption={formula.engineeringIllustrationCaption || `Textbook-style engineering illustration for ${formula.name}.`} generating={illustrating} onRegenerate={onRegenerateIllustration} />}
       {variables.length > 0 && (
         <div className="mt-3 border-t pt-2 text-sm">
           <p className="font-medium">Where:</p>

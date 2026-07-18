@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import FormulaCard from "@/components/FormulaCard";
+import EngineeringIllustration from '@/components/EngineeringIllustration';
 import LatexFormula, { LatexText } from "@/components/LatexFormula";
 import ImportExport from "@/components/flashcards/ImportExport";
 import SearchBar from "@/components/content/SearchBar";
@@ -123,6 +124,7 @@ export default function FormulaLibrary() {
   const [aiStatus, setAiStatus] = useState("");
   const [generating, setGenerating] = useState(false);
   const [aiController, setAiController] = useState(null);
+  const [illustratingKey, setIllustratingKey] = useState("");
   const [aiConfig, setAiConfig] = useState({
     subject: "PSAD",
     quantity: "5",
@@ -131,6 +133,7 @@ export default function FormulaLibrary() {
     subTopic: "",
     formulaNames: [""],
     exactFormulas: [""],
+    includeIllustration: null,
   });
   const [namesOpen, setNamesOpen] = useState(false);
   const [exactOpen, setExactOpen] = useState(false);
@@ -339,8 +342,7 @@ export default function FormulaLibrary() {
       });
       const generated = generatedArray(result, "items");
       generated.forEach((item) => console.info('[Formula] returned figureUrl', { formulaName: item.name, figureUrl: item.figureUrl || item.imageUrl || null }));
-      setAiPreview(
-        generated.map((item) => ({
+      const previews = generated.map((item) => ({
           ...blankFormula(),
           ...item,
           subject: ["PSAD", "MSTE", "HGE"].includes(item.subject)
@@ -351,8 +353,30 @@ export default function FormulaLibrary() {
           figureUrl: item.figureUrl || item.imageUrl || "",
           difficulty: item.difficulty || aiConfig.difficulty,
           tags: Array.isArray(item.tags) ? item.tags : [],
-        })),
-      );
+          previewId: crypto.randomUUID(),
+          illustrationDecision: aiConfig.includeIllustration === true ? 'requested' : 'declined',
+        }));
+      if (aiConfig.includeIllustration === true) {
+        setAiStatus('Generating engineering illustrations...');
+        const illustratedPreviews = await Promise.all(
+          previews.map(async (item) => {
+            try {
+              const engineeringIllustrationUrl = await firebaseApi.integrations.Core.GenerateEngineeringIllustration({ prompt: illustrationPrompt(item), signal: controller.signal });
+              return { ...item, engineeringIllustrationUrl, engineeringIllustrationCaption: illustrationCaption(item), illustrationDecision: 'generated' };
+            } catch (error) {
+              console.error('[Formula Library] Illustration generation failed', error);
+              return { ...item, illustrationDecision: 'failed' };
+            }
+          }),
+        );
+        if (controller.signal.aborted) return;
+        setAiPreview(illustratedPreviews);
+        if (illustratedPreviews.some((item) => item.illustrationDecision === 'failed')) {
+          toast({ title: 'Some illustrations could not be generated', description: 'The formula previews are still available. You can regenerate an illustration from its card.', variant: 'destructive' });
+        }
+      } else {
+        setAiPreview(previews);
+      }
       setAiOpen(false);
     } catch (error) {
       console.error("[Formula Library] Gemini generation failed", error);
@@ -366,6 +390,20 @@ export default function FormulaLibrary() {
       setAiController(null);
       setAiStatus("");
     }
+  };
+  const illustrationPrompt = (item) => `Create a professional Civil Engineering textbook illustration for the formula or concept "${item.name}" (${item.formula}). Subject: ${item.subject || 'Civil Engineering'}. Use a clean vector-style layout on a white background with minimal color. Include only relevant engineering elements such as a free body diagram, forces, dimensions, coordinate axes, angles, supports, beams, trusses, loads, stress/strain arrows, and clearly readable variable labels. Do not include paragraphs, decorative art, logos, watermarks, or unrelated objects.`;
+  const illustrationCaption = (item) => `Engineering illustration of ${item.name}, showing its relevant elements and variable labels.`;
+  const generateIllustration = async (item, preview = false) => {
+    const key = item.previewId || item.id;
+    setIllustratingKey(key);
+    try {
+      const engineeringIllustrationUrl = await firebaseApi.integrations.Core.GenerateEngineeringIllustration({ prompt: illustrationPrompt(item), signal: undefined });
+      const patch = { engineeringIllustrationUrl, engineeringIllustrationCaption: illustrationCaption(item), illustrationDecision: 'generated' };
+      if (preview) setAiPreview((current) => current.map((entry) => entry.previewId === key ? { ...entry, ...patch } : entry));
+      else { await firebaseApi.entities.Formula.update(item.id, patch); setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, ...patch } : entry)); }
+    } catch (error) {
+      toast({ title: 'Unable to generate illustration', description: error.message || 'Please try again.', variant: 'destructive' });
+    } finally { setIllustratingKey(''); }
   };
   const saveAiPreview = async () => {
     const valid = aiPreview.filter(
@@ -585,6 +623,8 @@ export default function FormulaLibrary() {
                       key={item.id}
                       formula={item}
                       actions={actions(item)}
+                      illustrating={illustratingKey === item.id}
+                      onRegenerateIllustration={() => generateIllustration(item)}
                     />
                   ))}
                 </div>
@@ -593,7 +633,7 @@ export default function FormulaLibrary() {
                 const topicKey = `${subject}\u0000${folder}`;
                 return <Collapsible key={folder} open={expandedTopic === topicKey} onOpenChange={(open) => { setExpandedTopic(open ? topicKey : ''); setExpandedSubTopic(''); }} className="mt-4 border-l-2 border-primary/30 pl-4">
                   <div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-4 w-4 transition-transform ${expandedTopic === topicKey ? 'rotate-180' : ''}`} /><span className="font-semibold"><LatexText value={folder} /></span></CollapsibleTrigger>{folderHeader(subject, folder).props.children.slice(1)}</div>
-                  <CollapsibleContent>{node.direct.length > 0 && <div className="mt-3 grid gap-3 lg:grid-cols-2">{node.direct.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} />)}</div>}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent><div className="mt-2 grid gap-3 lg:grid-cols-2">{subItems.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} />)}</div></CollapsibleContent></Collapsible>; })}</CollapsibleContent>
+                  <CollapsibleContent>{node.direct.length > 0 && <div className="mt-3 grid gap-3 lg:grid-cols-2">{node.direct.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} illustrating={illustratingKey === item.id} onRegenerateIllustration={() => generateIllustration(item)} />)}</div>}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent><div className="mt-2 grid gap-3 lg:grid-cols-2">{subItems.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} illustrating={illustratingKey === item.id} onRegenerateIllustration={() => generateIllustration(item)} />)}</div></CollapsibleContent></Collapsible>; })}</CollapsibleContent>
                 </Collapsible>;
               })}
             </section>
@@ -619,10 +659,21 @@ export default function FormulaLibrary() {
             <div className="grid gap-3 sm:grid-cols-2"><div><Label>Difficulty</Label><Select value={aiConfig.difficulty} onValueChange={(difficulty) => setAiConfig((current) => ({ ...current, difficulty }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['easy', 'medium', 'hard', 'mixed'].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div><div><Label>Number of Formulas</Label><Input type="number" min="1" max="100" value={aiConfig.quantity} onChange={(event) => setAiConfig((current) => ({ ...current, quantity: event.target.value }))} /></div></div>
             <Collapsible open={namesOpen} onOpenChange={setNamesOpen} className="rounded-md border"><CollapsibleTrigger className="flex w-full items-center gap-2 p-3 text-left font-medium"><ChevronDown className={`h-4 w-4 transition-transform ${namesOpen ? 'rotate-180' : ''}`} />Formula Name(s) <span className="text-muted-foreground">(Optional, up to 10)</span></CollapsibleTrigger><CollapsibleContent className="space-y-3 border-t p-3">{aiConfig.formulaNames.map((value, index) => <div key={index}><Label>Formula Name {index + 1}</Label><div className="flex gap-2"><Input value={value} onChange={(event) => setAiConfig((current) => ({ ...current, formulaNames: current.formulaNames.map((item, i) => i === index ? event.target.value : item) }))} placeholder="Stress" />{aiConfig.formulaNames.length > 1 && <Button type="button" variant="ghost" size="icon" aria-label="Remove formula name" onClick={() => setAiConfig((current) => ({ ...current, formulaNames: current.formulaNames.filter((_, i) => i !== index) }))}><X className="h-4 w-4" /></Button>}</div></div>)}{aiConfig.formulaNames.length < 10 && <Button type="button" variant="ghost" className="px-0" onClick={() => setAiConfig((current) => ({ ...current, formulaNames: [...current.formulaNames, ''] }))}><Plus className="mr-1 h-4 w-4" />Add Formula Name</Button>}</CollapsibleContent></Collapsible>
             <Collapsible open={exactOpen} onOpenChange={setExactOpen} className="rounded-md border"><CollapsibleTrigger className="flex w-full items-center gap-2 p-3 text-left font-medium"><ChevronDown className={`h-4 w-4 transition-transform ${exactOpen ? 'rotate-180' : ''}`} />Exact Formula(s) <span className="text-muted-foreground">(Optional)</span></CollapsibleTrigger><CollapsibleContent className="space-y-3 border-t p-3">{aiConfig.exactFormulas.map((value, index) => <div key={index}><Label>Formula {index + 1}</Label><div className="flex gap-2"><Input ref={(node) => { formulaInputRefs.current[index] = node; }} value={value} onChange={(event) => setAiConfig((current) => ({ ...current, exactFormulas: current.exactFormulas.map((item, i) => i === index ? event.target.value : item) }))} placeholder="σ=P/A" /><Popover><PopoverTrigger asChild><Button type="button" variant="outline" className="shrink-0">Insert Symbol</Button></PopoverTrigger><PopoverContent className="w-80"><div className="space-y-3">{Object.entries(SYMBOLS).map(([category, symbols]) => <div key={category}><p className="mb-1 text-xs font-medium text-muted-foreground">{category}</p><div className="flex flex-wrap gap-1">{symbols.map((symbol) => <Button key={symbol} type="button" variant="ghost" size="sm" onClick={() => insertSymbol(index, symbol)}>{symbol}</Button>)}</div></div>)}</div></PopoverContent></Popover>{aiConfig.exactFormulas.length > 1 && <Button type="button" variant="ghost" size="icon" aria-label="Remove formula" onClick={() => setAiConfig((current) => ({ ...current, exactFormulas: current.exactFormulas.filter((_, i) => i !== index) }))}><X className="h-4 w-4" /></Button>}</div></div>)}{aiConfig.exactFormulas.length < 5 && <Button type="button" variant="ghost" className="px-0" onClick={() => setAiConfig((current) => ({ ...current, exactFormulas: [...current.exactFormulas, ''] }))}><Plus className="mr-1 h-4 w-4" />Add Another</Button>}</CollapsibleContent></Collapsible>
+            <div className="rounded-md border bg-muted/20 p-3">
+              <p className="text-sm font-medium">Would you like to include a textbook-style engineering illustration or Free Body Diagram (FBD) with the formula explanation?</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant={aiConfig.includeIllustration === true ? 'default' : 'outline'} onClick={() => setAiConfig((current) => ({ ...current, includeIllustration: true }))}>
+                  🖼️ Yes, Include Illustration
+                </Button>
+                <Button type="button" size="sm" variant={aiConfig.includeIllustration === false ? 'default' : 'outline'} onClick={() => setAiConfig((current) => ({ ...current, includeIllustration: false }))}>
+                  ❌ No, Text Only
+                </Button>
+              </div>
+            </div>
             <Button
               className="w-full"
               onClick={generateAi}
-              disabled={generating}
+              disabled={generating || typeof aiConfig.includeIllustration !== 'boolean'}
             >
               {generating ? (
                 <>
@@ -697,6 +748,8 @@ export default function FormulaLibrary() {
                 }
               />
               <LatexFormula value={item.formula} className="mt-2 rounded bg-muted/40 px-2" />
+              {item.description && <p className="mt-2 text-sm text-muted-foreground"><LatexText value={item.description} /></p>}
+              {item.engineeringIllustrationUrl && <EngineeringIllustration imageUrl={item.engineeringIllustrationUrl} caption={item.engineeringIllustrationCaption} generating={illustratingKey === item.previewId} onRegenerate={() => generateIllustration(item, true)} />}
             </div>
           ))}
           <div className="flex gap-2">
