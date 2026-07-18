@@ -1,7 +1,7 @@
 import React from "react";
 import { GripVertical } from "lucide-react";
 import LatexFormula, { LatexInline, LatexText } from "@/components/LatexFormula";
-import FigureViewer from "@/components/FigureViewer";
+import FigureViewer, { getFigureUrl, hasFigureUrl } from "@/components/FigureViewer";
 import EngineeringIllustration from '@/components/EngineeringIllustration';
 
 const parseVariables = (formula) => {
@@ -30,7 +30,7 @@ export default function FormulaCard({ formula, actions, onRegenerateIllustration
   const variables = parseVariables(formula);
   const folder = formula.folder || formula.topic;
   const subFolder = formula.subFolder || formula.subtopic;
-  const figureUrl = formula.figureUrl || formula.imageUrl || null;
+  const figureUrl = getFigureUrl(formula.figureUrl, formula.imageUrl);
   return (
     <article ref={innerRef} {...draggableProps} className={`glass-card p-3 transition-shadow duration-200 ${isDragging ? "scale-[1.015] shadow-2xl ring-1 ring-primary/30" : ""}`}>
       <div className="flex justify-between gap-2">
@@ -49,7 +49,7 @@ export default function FormulaCard({ formula, actions, onRegenerateIllustration
         </div>
         {actions}
       </div>
-      {figureUrl && (
+      {hasFigureUrl(formula.resolvedImageUrl, figureUrl) && (
         <div className="mt-3">
           {formula.figureLabel && <p className="mb-2 text-sm font-medium"><LatexText value={formula.figureLabel} /></p>}
           <FigureViewer imageUrl={figureUrl} resolvedImageUrl={formula.resolvedImageUrl} label={formula.figureLabel || `${formula.name} figure`} />

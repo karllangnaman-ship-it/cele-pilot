@@ -3,11 +3,16 @@ import { Expand, ImageOff, Loader2, Maximize2, Minus, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LatexText } from '@/components/LatexFormula';
 
+export const getFigureUrl = (...urls) => urls
+  .map((url) => typeof url === 'string' ? url.trim().replace(/^<|>$/g, '') : '')
+  .find(Boolean) || '';
+export const hasFigureUrl = (...urls) => Boolean(getFigureUrl(...urls));
+
 // `resolvedImageUrl` is deliberately preferred. It is the URL that was already
 // proven usable by the source view, so consumers must not attempt to resolve
 // the original URL again when displaying the same figure elsewhere.
 export default function FigureViewer({ imageUrl = '', resolvedImageUrl = '', url = '', label = 'Figure', className = '' }) {
-  const normalizedUrl = String(resolvedImageUrl || imageUrl || url || '').trim().replace(/^<|>$/g, '');
+  const normalizedUrl = getFigureUrl(resolvedImageUrl, imageUrl, url);
   const id = `figure-${useId().replace(/:/g, '')}`; const [src, setSrc] = useState(''); const [state, setState] = useState('loading'); const [open, setOpen] = useState(false); const [zoom, setZoom] = useState(1);
   // Let the browser load the supplied URL directly. This supports absolute
   // storage/blob URLs and same-origin relative URLs without requiring the

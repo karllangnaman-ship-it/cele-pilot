@@ -20,7 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { ChevronRight, Folder, Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import ImportExport from "@/components/flashcards/ImportExport";
-import FigureViewer from "@/components/FigureViewer";
+import FigureViewer, { hasFigureUrl } from "@/components/FigureViewer";
 import SituationViewer from "@/components/SituationViewer";
 import QuestionLatexRenderer from "@/components/QuestionLatexRenderer";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -405,7 +405,7 @@ export default function ContentLibrary({ type }) {
   const questionCard = (item) => {
     return (
       <article key={item.id} className="rounded-lg border p-3">
-        {!item.situationId && (item.imageUrl || item.resolvedImageUrl) && (
+        {!item.situationId && hasFigureUrl(item.resolvedImageUrl, item.imageUrl) && (
           <div className="mb-3">
             {item.figureLabel && <p className="mb-2 text-sm font-medium"><QuestionLatexRenderer value={item.figureLabel} /></p>}
             <FigureViewer imageUrl={item.imageUrl} resolvedImageUrl={item.resolvedImageUrl} label={item.figureLabel || "Question figure"} />
@@ -659,7 +659,7 @@ export default function ContentLibrary({ type }) {
                     className="rounded-lg border p-3"
                   />
                 )}
-                {!item.situationTitle && !item.situationDescription && (item.imageUrl || item.resolvedImageUrl) && <div>
+                {!item.situationTitle && !item.situationDescription && hasFigureUrl(item.resolvedImageUrl, item.imageUrl) && <div>
                   {item.figureLabel && <p className="mb-2 text-sm font-medium"><QuestionLatexRenderer value={item.figureLabel} /></p>}
                   <FigureViewer imageUrl={item.imageUrl} resolvedImageUrl={item.resolvedImageUrl} label={item.figureLabel || "Question figure"} />
                 </div>}

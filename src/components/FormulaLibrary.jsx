@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import FormulaCard from "@/components/FormulaCard";
-import FigureViewer from "@/components/FigureViewer";
+import FigureViewer, { hasFigureUrl } from "@/components/FigureViewer";
 import EngineeringIllustration from '@/components/EngineeringIllustration';
 import LatexFormula, { LatexText } from "@/components/LatexFormula";
 import ImportExport from "@/components/flashcards/ImportExport";
@@ -796,7 +796,7 @@ export default function FormulaLibrary() {
                 }
               />
               <LatexFormula value={item.formula} className="mt-2 rounded bg-muted/40 px-2" />
-              {item.figureUrl && <>{item.figureLabel && <p className="mt-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}<FigureViewer imageUrl={item.figureUrl} resolvedImageUrl={item.resolvedImageUrl} label={item.figureLabel || `${item.name} figure`} /></>}
+              {hasFigureUrl(item.resolvedImageUrl, item.figureUrl, item.imageUrl) && <>{item.figureLabel && <p className="mt-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}<FigureViewer imageUrl={item.figureUrl || item.imageUrl} resolvedImageUrl={item.resolvedImageUrl} label={item.figureLabel || `${item.name} figure`} /></>}
               {item.description && <p className="mt-2 text-sm text-muted-foreground"><LatexText value={item.description} /></p>}
               {item.engineeringIllustrationUrl && <EngineeringIllustration imageUrl={item.engineeringIllustrationUrl} caption={item.engineeringIllustrationCaption} generating={illustratingKey === item.previewId} onRegenerate={() => generateIllustration(item, true)} />}
             </div>

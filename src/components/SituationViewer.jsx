@@ -1,11 +1,12 @@
 import React from 'react';
-import FigureViewer from '@/components/FigureViewer';
+import FigureViewer, { getFigureUrl, hasFigureUrl } from '@/components/FigureViewer';
 import QuestionLatexRenderer from '@/components/QuestionLatexRenderer';
 
 /** Canonical situation header used by the bank, practice, exams, and review. */
 export default function SituationViewer({ situation, children, className = 'glass-card space-y-3 p-4' }) {
   if (!situation) return null;
   const title = situation.title || situation.externalId || 'Situation';
-  const imageUrl = situation.imageUrl || situation.figureUrl;
-  return <section className={className}><div><h2 className="font-semibold"><QuestionLatexRenderer value={title} /></h2>{situation.figureLabel && <p className="mt-2 text-sm font-medium"><QuestionLatexRenderer value={situation.figureLabel} /></p>}{(imageUrl || situation.resolvedImageUrl) && <FigureViewer imageUrl={imageUrl} resolvedImageUrl={situation.resolvedImageUrl} label={situation.figureLabel || title || 'Situation figure'} />}{situation.description && <div className="mt-2 text-sm"><QuestionLatexRenderer value={situation.description} /></div>}</div>{children}</section>;
+  const imageUrl = getFigureUrl(situation.imageUrl, situation.figureUrl);
+  const hasFigure = hasFigureUrl(situation.resolvedImageUrl, imageUrl);
+  return <section className={className}><div><h2 className="font-semibold"><QuestionLatexRenderer value={title} /></h2>{hasFigure && <>{situation.figureLabel && <p className="mt-2 text-sm font-medium"><QuestionLatexRenderer value={situation.figureLabel} /></p>}<FigureViewer imageUrl={imageUrl} resolvedImageUrl={situation.resolvedImageUrl} label={situation.figureLabel || title || 'Situation figure'} /></>}{situation.description && <div className="mt-2 text-sm"><QuestionLatexRenderer value={situation.description} /></div>}</div>{children}</section>;
 }
