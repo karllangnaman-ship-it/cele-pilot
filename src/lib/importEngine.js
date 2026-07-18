@@ -43,6 +43,7 @@ export const blankFormula = () => ({
   tags: "",
   sourceType: "manual",
   visibility: "private",
+  order: null,
 });
 export const blankQuestion = () => ({
   subject: "",
@@ -148,6 +149,7 @@ export function mapSpreadsheetRow(row, type) {
         units: first(values, "units"),
         references: first(values, "reference", "references"),
         tags: splitValues(first(values, "tags")),
+        order: Number.isFinite(Number(first(values, "order"))) ? Number(first(values, "order")) : null,
       },
       type,
       "spreadsheet",

@@ -20,7 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { ChevronRight, Folder, Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import ImportExport from "@/components/flashcards/ImportExport";
-import RemoteFigure from "@/components/RemoteFigure";
+import FigureViewer from "@/components/FigureViewer";
 import SituationViewer from "@/components/SituationViewer";
 import { LatexText } from "@/components/LatexFormula";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -456,7 +456,7 @@ export default function ContentLibrary({ type }) {
         </div>
         {item.imageUrl && (
           <div className="mt-2">
-            <RemoteFigure
+            <FigureViewer
               url={item.imageUrl}
               label={item.figureLabel || "Question figure"}
             />

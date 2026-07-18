@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 import {
   ChevronDown,
   Copy,
@@ -24,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import FormulaCard from "@/components/FormulaCard";
+import FigureViewer from "@/components/FigureViewer";
 import EngineeringIllustration from '@/components/EngineeringIllustration';
 import LatexFormula, { LatexText } from "@/components/LatexFormula";
 import ImportExport from "@/components/flashcards/ImportExport";
@@ -69,6 +71,8 @@ const textAreas = new Set(["formula", "description", "remarks"]);
 const norm = (value) => String(value || "").trim();
 const formulaFolder = (item) => norm(item.folder || item.topic);
 const formulaSubFolder = (item) => norm(item.subFolder || item.subtopic);
+const formulaOrder = (item) => Number.isFinite(item.order) ? item.order : Number.MAX_SAFE_INTEGER;
+const orderedFormulas = (entries) => [...entries].sort((a, b) => formulaOrder(a) - formulaOrder(b) || String(a.id).localeCompare(String(b.id)));
 const SYMBOLS = {
   Greek: [
     "Δ",
@@ -140,18 +144,16 @@ export default function FormulaLibrary() {
   const [expandedTopic, setExpandedTopic] = useState("");
   const [expandedSubTopic, setExpandedSubTopic] = useState("");
   const formulaInputRefs = useRef([]);
-  const load = async () => {
-    const me = await firebaseApi.auth.me();
-    setUser(me);
-    const [formulas, folders] = await Promise.all([
-      firebaseApi.entities.Formula.filter({ user_id: me.id }),
-      firebaseApi.entities.FormulaFolder.filter({ user_id: me.id }),
-    ]);
-    setItems(formulas);
-    setFolderDocs(folders);
-  };
   useEffect(() => {
-    load();
+    let unsubscribeFormulas = () => {};
+    let unsubscribeFolders = () => {};
+    firebaseApi.auth.me().then((me) => {
+      setUser(me);
+      if (!me) return;
+      unsubscribeFormulas = firebaseApi.entities.Formula.subscribe(setItems);
+      unsubscribeFolders = firebaseApi.entities.FormulaFolder.subscribe(setFolderDocs);
+    }).catch((error) => console.error("Unable to load formula library", error));
+    return () => { unsubscribeFormulas(); unsubscribeFolders(); };
   }, []);
   const folderOptions = useMemo(() => {
     const values = new Map();
@@ -290,6 +292,10 @@ export default function FormulaLibrary() {
           : draft.tags,
       user_id: user.id,
     };
+    if (!editing?.id) {
+      const sameSection = items.filter((item) => norm(item.subject) === norm(payload.subject) && formulaFolder(item) === folder && formulaSubFolder(item) === subFolder);
+      payload.order = sameSection.length ? Math.max(...sameSection.map((item) => Number.isFinite(item.order) ? item.order : -1)) + 1 : 0;
+    }
     const saved = editing?.id
       ? await firebaseApi.entities.Formula.update(editing.id, payload)
       : await firebaseApi.entities.Formula.create(payload);
@@ -298,10 +304,31 @@ export default function FormulaLibrary() {
         ? current.map((item) =>
             item.id === editing.id ? { ...item, ...saved } : item,
           )
-        : [saved, ...current],
+        : [...current, saved],
     );
     setFormulaOpen(false);
     toast({ title: editing ? "Formula updated" : "Formula added" });
+  };
+  const reorderFormulas = async (sectionItems, sourceIndex, destinationIndex) => {
+    if (sourceIndex === destinationIndex) return;
+    const previous = orderedFormulas(sectionItems);
+    const next = [...previous];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(destinationIndex, 0, moved);
+    const start = Math.min(sourceIndex, destinationIndex);
+    const changed = next.slice(start).filter((item, index) => item.order !== start + index);
+    // Apply every visual change first; snapshot listeners from another device will reconcile later.
+    setItems((current) => current.map((item) => {
+      const position = next.findIndex((candidate) => candidate.id === item.id);
+      return position === -1 ? item : { ...item, order: position };
+    }));
+    try {
+      await Promise.all(changed.map((item) => firebaseApi.entities.Formula.update(item.id, { order: next.indexOf(item) })));
+    } catch (error) {
+      const restore = new Map(previous.map((item, index) => [item.id, item.order ?? index]));
+      setItems((current) => current.map((item) => restore.has(item.id) ? { ...item, order: restore.get(item.id) } : item));
+      toast({ title: "Unable to save formula order", description: error.message || "Your previous order was restored.", variant: "destructive" });
+    }
   };
   const createFolder = async () => {
     const subject = norm(folderDraft.subject);
@@ -409,6 +436,11 @@ export default function FormulaLibrary() {
     const valid = aiPreview.filter(
       (item) => validateItem(item, "formula").valid,
     );
+    const nextOrderBySection = new Map();
+    items.forEach((item) => {
+      const key = `${norm(item.subject)}\u0000${formulaFolder(item)}\u0000${formulaSubFolder(item)}`;
+      nextOrderBySection.set(key, Math.max(nextOrderBySection.get(key) ?? -1, Number.isFinite(item.order) ? item.order : -1));
+    });
     const created = await firebaseApi.entities.Formula.bulkCreate(
       valid.map((item) => ({
         ...item,
@@ -418,6 +450,7 @@ export default function FormulaLibrary() {
         subtopic: norm(item.subFolder),
         user_id: user.id,
         sourceType: "ai",
+        order: (() => { const key = `${norm(item.subject)}\u0000${norm(item.folder)}\u0000${norm(item.subFolder)}`; const next = (nextOrderBySection.get(key) ?? -1) + 1; nextOrderBySection.set(key, next); return next; })(),
       })),
     );
     setItems((current) => [...created, ...current]);
@@ -568,6 +601,19 @@ export default function FormulaLibrary() {
       </Button>
     </div>
   );
+  const formulaList = (sectionKey, sectionItems, className = "mt-3") => {
+    const sorted = orderedFormulas(sectionItems);
+    return <DragDropContext onDragEnd={({ source, destination }) => destination && reorderFormulas(sorted, source.index, destination.index)}>
+      <Droppable droppableId={sectionKey} direction="vertical">
+        {(provided, snapshot) => <div ref={provided.innerRef} {...provided.droppableProps} className={`${className} grid gap-3 lg:grid-cols-2 ${snapshot.isDraggingOver ? "rounded-lg bg-primary/5 p-2 transition-colors" : ""}`}>
+          {sorted.map((item, index) => <Draggable key={item.id} draggableId={item.id} index={index}>
+            {(dragProvided, dragSnapshot) => <FormulaCard formula={item} actions={actions(item)} illustrating={illustratingKey === item.id} onRegenerateIllustration={() => generateIllustration(item)} innerRef={dragProvided.innerRef} draggableProps={dragProvided.draggableProps} dragHandleProps={dragProvided.dragHandleProps} isDragging={dragSnapshot.isDragging} />}
+          </Draggable>)}
+          {provided.placeholder}
+        </div>}
+      </Droppable>
+    </DragDropContext>;
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-between gap-3">
@@ -580,7 +626,7 @@ export default function FormulaLibrary() {
         <div className="flex flex-wrap gap-2">
           <ImportExport
             user={user}
-            cards={items}
+            cards={orderedFormulas(items)}
             type="formula"
             onImported={(created) =>
               setItems((current) => [...created, ...current])
@@ -617,23 +663,13 @@ export default function FormulaLibrary() {
             <section key={subject} className="glass-card p-4">
               <h2 className="text-lg font-bold"><LatexText value={subject} /></h2>
               {group.direct.length > 0 && (
-                <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                  {group.direct.map((item) => (
-                    <FormulaCard
-                      key={item.id}
-                      formula={item}
-                      actions={actions(item)}
-                      illustrating={illustratingKey === item.id}
-                      onRegenerateIllustration={() => generateIllustration(item)}
-                    />
-                  ))}
-                </div>
+                formulaList(`${subject}--root`, group.direct)
               )}
               {[...group.folders.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, node]) => {
                 const topicKey = `${subject}\u0000${folder}`;
                 return <Collapsible key={folder} open={expandedTopic === topicKey} onOpenChange={(open) => { setExpandedTopic(open ? topicKey : ''); setExpandedSubTopic(''); }} className="mt-4 border-l-2 border-primary/30 pl-4">
                   <div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-4 w-4 transition-transform ${expandedTopic === topicKey ? 'rotate-180' : ''}`} /><span className="font-semibold"><LatexText value={folder} /></span></CollapsibleTrigger>{folderHeader(subject, folder).props.children.slice(1)}</div>
-                  <CollapsibleContent>{node.direct.length > 0 && <div className="mt-3 grid gap-3 lg:grid-cols-2">{node.direct.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} illustrating={illustratingKey === item.id} onRegenerateIllustration={() => generateIllustration(item)} />)}</div>}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent><div className="mt-2 grid gap-3 lg:grid-cols-2">{subItems.map((item) => <FormulaCard key={item.id} formula={item} actions={actions(item)} illustrating={illustratingKey === item.id} onRegenerateIllustration={() => generateIllustration(item)} />)}</div></CollapsibleContent></Collapsible>; })}</CollapsibleContent>
+                  <CollapsibleContent>{node.direct.length > 0 && formulaList(`${subject}--${folder}--root`, node.direct)}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent>{formulaList(`${subject}--${folder}--${subFolder}`, subItems, "mt-2")}</CollapsibleContent></Collapsible>; })}</CollapsibleContent>
                 </Collapsible>;
               })}
             </section>
@@ -748,6 +784,7 @@ export default function FormulaLibrary() {
                 }
               />
               <LatexFormula value={item.formula} className="mt-2 rounded bg-muted/40 px-2" />
+              {item.figureUrl && <FigureViewer url={item.figureUrl} label={`${item.name} figure`} />}
               {item.description && <p className="mt-2 text-sm text-muted-foreground"><LatexText value={item.description} /></p>}
               {item.engineeringIllustrationUrl && <EngineeringIllustration imageUrl={item.engineeringIllustrationUrl} caption={item.engineeringIllustrationCaption} generating={illustratingKey === item.previewId} onRegenerate={() => generateIllustration(item, true)} />}
             </div>

@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
+import { GripVertical } from "lucide-react";
 import LatexFormula, { LatexInline, LatexText } from "@/components/LatexFormula";
-import RemoteFigure from "@/components/RemoteFigure";
+import FigureViewer from "@/components/FigureViewer";
 import EngineeringIllustration from '@/components/EngineeringIllustration';
 
 const parseVariables = (formula) => {
@@ -25,7 +26,7 @@ const parseVariables = (formula) => {
         .filter((item) => item.symbol && item.meaning && item.unit);
 };
 
-export default function FormulaCard({ formula, actions, onRegenerateIllustration, illustrating }) {
+export default function FormulaCard({ formula, actions, onRegenerateIllustration, illustrating, dragHandleProps, draggableProps, innerRef, isDragging = false }) {
   const variables = parseVariables(formula);
   const folder = formula.folder || formula.topic;
   const subFolder = formula.subFolder || formula.subtopic;
@@ -39,9 +40,11 @@ export default function FormulaCard({ formula, actions, onRegenerateIllustration
       });
   }, [figureUrl, formula.id, formula.name]);
   return (
-    <article className="glass-card p-3">
+    <article ref={innerRef} {...draggableProps} className={`glass-card p-3 transition-shadow duration-200 ${isDragging ? "scale-[1.015] shadow-2xl ring-1 ring-primary/30" : ""}`}>
       <div className="flex justify-between gap-2">
-        <div>
+        <div className="flex min-w-0 gap-1">
+          {dragHandleProps && <button type="button" aria-label={`Reorder ${formula.name}`} title="Drag to reorder" {...dragHandleProps} className="mt-0.5 shrink-0 cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"><GripVertical className="h-5 w-5" /></button>}
+          <div>
           <h2 className="font-semibold">
             <LatexText value={formula.name} />
           </h2>
@@ -50,12 +53,13 @@ export default function FormulaCard({ formula, actions, onRegenerateIllustration
             {folder && <> · <LatexText value={folder} /></>}
             {subFolder && <> · <LatexText value={subFolder} /></>}
           </p>
+          </div>
         </div>
         {actions}
       </div>
       {figureUrl && (
         <div className="mt-3">
-          <RemoteFigure url={figureUrl} label={`${formula.name} figure`} />
+          <FigureViewer url={figureUrl} label={`${formula.name} figure`} />
         </div>
       )}
       <LatexFormula value={formula.formula} className="mt-3 text-lg" />

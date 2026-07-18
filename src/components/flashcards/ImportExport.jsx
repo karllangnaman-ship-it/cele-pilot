@@ -84,6 +84,7 @@ const configs = {
       "Reference",
       "Tags",
       "Difficulty",
+      "Order",
       "Variable Symbol 1",
       "Variable Meaning 1",
       "Variable Unit 1",
@@ -140,6 +141,7 @@ const configs = {
       Reference: item.references || "",
       Tags: Array.isArray(item.tags) ? item.tags.join(", ") : item.tags || "",
       Difficulty: item.difficulty || "",
+      Order: Number.isFinite(item.order) ? item.order : "",
       ...Object.fromEntries(
         Array.from({ length: 5 }, (_, i) => {
           const n = i + 1;
@@ -447,14 +449,30 @@ export default function ImportExport({
       total: preview.length,
     });
     try {
+      const entriesToImport = type === "formula"
+        ? (() => {
+            const nextBySection = new Map();
+            cards.forEach((item) => {
+              const key = `${item.subject || ""}\u0000${item.folder || item.topic || ""}\u0000${item.subFolder || item.subtopic || ""}`;
+              nextBySection.set(key, Math.max(nextBySection.get(key) ?? -1, Number.isFinite(item.order) ? item.order : -1));
+            });
+            return preview.map((entry) => {
+              if (Number.isFinite(entry.item.order)) return entry;
+              const key = `${entry.item.subject || ""}\u0000${entry.item.folder || entry.item.topic || ""}\u0000${entry.item.subFolder || entry.item.subtopic || ""}`;
+              const order = (nextBySection.get(key) ?? -1) + 1;
+              nextBySection.set(key, order);
+              return { ...entry, item: { ...entry.item, order } };
+            });
+          })()
+        : preview;
       const { created, failedRows } = await (config.importEntries
         ? config.importEntries({
-            entries: preview,
+            entries: entriesToImport,
             userId: user.id,
             onProgress: setStatus,
           })
         : batchWriteItems({
-            entries: preview,
+            entries: entriesToImport,
             entity: config.entity,
             userId: user.id,
             total: preview.length,
