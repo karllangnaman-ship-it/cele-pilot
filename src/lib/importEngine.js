@@ -76,6 +76,7 @@ export const blankQuestion = () => ({
   source: "",
   questionSource: null,
   imageUrl: null,
+  resolvedImageUrl: null,
   figureLabel: "",
   situationId: null,
   situationKey: "",

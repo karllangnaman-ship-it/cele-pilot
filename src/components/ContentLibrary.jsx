@@ -405,10 +405,10 @@ export default function ContentLibrary({ type }) {
   const questionCard = (item) => {
     return (
       <article key={item.id} className="rounded-lg border p-3">
-        {!item.situationId && item.imageUrl && (
+        {!item.situationId && (item.imageUrl || item.resolvedImageUrl) && (
           <div className="mb-3">
             {item.figureLabel && <p className="mb-2 text-sm font-medium"><QuestionLatexRenderer value={item.figureLabel} /></p>}
-            <FigureViewer url={item.imageUrl} label={item.figureLabel || "Question figure"} />
+            <FigureViewer imageUrl={item.imageUrl} resolvedImageUrl={item.resolvedImageUrl} label={item.figureLabel || "Question figure"} />
           </div>
         )}
         <div className="flex justify-between gap-2">
@@ -655,13 +655,13 @@ export default function ContentLibrary({ type }) {
                 </div>
                 {(item.situationTitle || item.situationDescription) && (
                   <SituationViewer
-                    situation={{ title: item.situationTitle, description: item.situationDescription, imageUrl: item.imageUrl, figureLabel: item.figureLabel }}
+                    situation={{ title: item.situationTitle, description: item.situationDescription, imageUrl: item.imageUrl, resolvedImageUrl: item.resolvedImageUrl, figureLabel: item.figureLabel }}
                     className="rounded-lg border p-3"
                   />
                 )}
-                {!item.situationTitle && !item.situationDescription && item.imageUrl && <div>
+                {!item.situationTitle && !item.situationDescription && (item.imageUrl || item.resolvedImageUrl) && <div>
                   {item.figureLabel && <p className="mb-2 text-sm font-medium"><QuestionLatexRenderer value={item.figureLabel} /></p>}
-                  <FigureViewer url={item.imageUrl} label={item.figureLabel || "Question figure"} />
+                  <FigureViewer imageUrl={item.imageUrl} resolvedImageUrl={item.resolvedImageUrl} label={item.figureLabel || "Question figure"} />
                 </div>}
                 {fields.map(([key, label]) => (
                   <div key={key}>

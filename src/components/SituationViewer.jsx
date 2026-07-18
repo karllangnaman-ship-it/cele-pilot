@@ -6,6 +6,6 @@ import QuestionLatexRenderer from '@/components/QuestionLatexRenderer';
 export default function SituationViewer({ situation, children, className = 'glass-card space-y-3 p-4' }) {
   if (!situation) return null;
   const title = situation.title || situation.externalId || 'Situation';
-  const figureUrl = situation.imageUrl || situation.figureUrl;
-  return <section className={className}><div><h2 className="font-semibold"><QuestionLatexRenderer value={title} /></h2>{situation.figureLabel && <p className="mt-2 text-sm font-medium"><QuestionLatexRenderer value={situation.figureLabel} /></p>}{figureUrl && <FigureViewer url={figureUrl} label={situation.figureLabel || title || 'Situation figure'} />}{situation.description && <div className="mt-2 text-sm"><QuestionLatexRenderer value={situation.description} /></div>}</div>{children}</section>;
+  const imageUrl = situation.imageUrl || situation.figureUrl;
+  return <section className={className}><div><h2 className="font-semibold"><QuestionLatexRenderer value={title} /></h2>{situation.figureLabel && <p className="mt-2 text-sm font-medium"><QuestionLatexRenderer value={situation.figureLabel} /></p>}{(imageUrl || situation.resolvedImageUrl) && <FigureViewer imageUrl={imageUrl} resolvedImageUrl={situation.resolvedImageUrl} label={situation.figureLabel || title || 'Situation figure'} />}{situation.description && <div className="mt-2 text-sm"><QuestionLatexRenderer value={situation.description} /></div>}</div>{children}</section>;
 }

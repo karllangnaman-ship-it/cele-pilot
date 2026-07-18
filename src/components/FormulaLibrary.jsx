@@ -796,7 +796,7 @@ export default function FormulaLibrary() {
                 }
               />
               <LatexFormula value={item.formula} className="mt-2 rounded bg-muted/40 px-2" />
-              {item.figureUrl && <>{item.figureLabel && <p className="mt-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}<FigureViewer url={item.figureUrl} label={item.figureLabel || `${item.name} figure`} /></>}
+              {item.figureUrl && <>{item.figureLabel && <p className="mt-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}<FigureViewer imageUrl={item.figureUrl} resolvedImageUrl={item.resolvedImageUrl} label={item.figureLabel || `${item.name} figure`} /></>}
               {item.description && <p className="mt-2 text-sm text-muted-foreground"><LatexText value={item.description} /></p>}
               {item.engineeringIllustrationUrl && <EngineeringIllustration imageUrl={item.engineeringIllustrationUrl} caption={item.engineeringIllustrationCaption} generating={illustratingKey === item.previewId} onRegenerate={() => generateIllustration(item, true)} />}
             </div>

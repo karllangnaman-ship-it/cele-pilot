@@ -52,7 +52,7 @@ export default function FormulaCard({ formula, actions, onRegenerateIllustration
       {figureUrl && (
         <div className="mt-3">
           {formula.figureLabel && <p className="mb-2 text-sm font-medium"><LatexText value={formula.figureLabel} /></p>}
-          <FigureViewer url={figureUrl} label={formula.figureLabel || `${formula.name} figure`} />
+          <FigureViewer imageUrl={figureUrl} resolvedImageUrl={formula.resolvedImageUrl} label={formula.figureLabel || `${formula.name} figure`} />
         </div>
       )}
       {formula.description && (
