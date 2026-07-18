@@ -470,6 +470,8 @@ export default function ContentLibrary({ type }) {
             <LatexText value={item.explanation} />
           </div>
         )}
+        {item.solution && <div className="mt-2 text-sm text-muted-foreground"><LatexText value={item.solution} /></div>}
+        {item.remarks && <div className="mt-2 text-sm text-muted-foreground"><LatexText value={item.remarks} /></div>}
       </article>
     );
   };
