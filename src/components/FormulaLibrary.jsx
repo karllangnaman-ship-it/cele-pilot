@@ -674,21 +674,13 @@ export default function FormulaLibrary() {
             <section key={subject} className="glass-card p-4">
               <h2 className="text-lg font-bold"><LatexText value={subject} /></h2>
               {group.direct.length > 0 && (
-<<<<<<< HEAD
                 formulaList(`${subject}--root`, group.direct)
-=======
-                sortableCards(`${subject}-root`, group.direct)
->>>>>>> 71bc133 (stresss)
               )}
               {[...group.folders.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, node]) => {
                 const topicKey = `${subject}\u0000${folder}`;
                 return <Collapsible key={folder} open={expandedTopic === topicKey} onOpenChange={(open) => { setExpandedTopic(open ? topicKey : ''); setExpandedSubTopic(''); }} className="mt-4 border-l-2 border-primary/30 pl-4">
                   <div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-4 w-4 transition-transform ${expandedTopic === topicKey ? 'rotate-180' : ''}`} /><span className="font-semibold"><LatexText value={folder} /></span></CollapsibleTrigger>{folderHeader(subject, folder).props.children.slice(1)}</div>
-<<<<<<< HEAD
                   <CollapsibleContent>{node.direct.length > 0 && formulaList(`${subject}--${folder}--root`, node.direct)}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent>{formulaList(`${subject}--${folder}--${subFolder}`, subItems, "mt-2")}</CollapsibleContent></Collapsible>; })}</CollapsibleContent>
-=======
-                  <CollapsibleContent>{node.direct.length > 0 && sortableCards(`${subject}-${folder}-root`, node.direct)}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent>{sortableCards(`${subject}-${folder}-${subFolder}`, subItems, 'mt-2')}</CollapsibleContent></Collapsible>; })}</CollapsibleContent>
->>>>>>> 71bc133 (stresss)
                 </Collapsible>;
               })}
             </section>
