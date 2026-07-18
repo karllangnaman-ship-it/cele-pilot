@@ -22,7 +22,7 @@ import { ChevronRight, Folder, Loader2, Pencil, Plus, Sparkles, Trash2 } from "l
 import ImportExport from "@/components/flashcards/ImportExport";
 import FigureViewer from "@/components/FigureViewer";
 import SituationViewer from "@/components/SituationViewer";
-import { LatexText } from "@/components/LatexFormula";
+import QuestionLatexRenderer from "@/components/QuestionLatexRenderer";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import SearchBar from "@/components/content/SearchBar";
 import SubjectFilter from "@/components/content/SubjectFilter";
@@ -407,7 +407,7 @@ export default function ContentLibrary({ type }) {
       <article key={item.id} className="rounded-lg border p-3">
         {!item.situationId && item.imageUrl && (
           <div className="mb-3">
-            {item.figureLabel && <p className="mb-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}
+            {item.figureLabel && <p className="mb-2 text-sm font-medium"><QuestionLatexRenderer value={item.figureLabel} /></p>}
             <FigureViewer url={item.imageUrl} label={item.figureLabel || "Question figure"} />
           </div>
         )}
@@ -415,7 +415,7 @@ export default function ContentLibrary({ type }) {
           <div>
             <h3 className="font-semibold">
               {item.questionNumber ? `Question ${item.questionNumber}: ` : ""}
-              <LatexText value={item.question} />
+              <QuestionLatexRenderer value={item.question} />
             </h3>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span>Type: {item.situationId ? "Situation" : "Standalone"}</span>
@@ -461,17 +461,17 @@ export default function ContentLibrary({ type }) {
         <ol className="mt-2 grid gap-1 text-sm list-[upper-alpha] pl-5">
           {(item.choices || []).map((choice, index) => (
             <li key={index}>
-              <LatexText value={choice} />
+              <QuestionLatexRenderer value={choice} />
             </li>
           ))}
         </ol>
         {item.explanation && (
           <div className="mt-2 text-sm text-muted-foreground">
-            <LatexText value={item.explanation} />
+            <QuestionLatexRenderer value={item.explanation} />
           </div>
         )}
-        {item.solution && <div className="mt-2 text-sm text-muted-foreground"><LatexText value={item.solution} /></div>}
-        {item.remarks && <div className="mt-2 text-sm text-muted-foreground"><LatexText value={item.remarks} /></div>}
+        {item.solution && <div className="mt-2 text-sm text-muted-foreground"><QuestionLatexRenderer value={item.solution} /></div>}
+        {item.remarks && <div className="mt-2 text-sm text-muted-foreground"><QuestionLatexRenderer value={item.remarks} /></div>}
       </article>
     );
   };
@@ -660,7 +660,7 @@ export default function ContentLibrary({ type }) {
                   />
                 )}
                 {!item.situationTitle && !item.situationDescription && item.imageUrl && <div>
-                  {item.figureLabel && <p className="mb-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}
+                  {item.figureLabel && <p className="mb-2 text-sm font-medium"><QuestionLatexRenderer value={item.figureLabel} /></p>}
                   <FigureViewer url={item.imageUrl} label={item.figureLabel || "Question figure"} />
                 </div>}
                 {fields.map(([key, label]) => (
@@ -675,7 +675,7 @@ export default function ContentLibrary({ type }) {
                     )}
                     {item[key] && (
                       <div className="mt-1 rounded bg-muted/40 p-2 text-sm">
-                        <LatexText value={Array.isArray(item[key]) ? item[key].join(" | ") : item[key]} />
+                        <QuestionLatexRenderer value={Array.isArray(item[key]) ? item[key].join(" | ") : item[key]} />
                       </div>
                     )}
                   </div>
@@ -803,7 +803,7 @@ export default function ContentLibrary({ type }) {
               <div key={key}>
                 <Label>{label}</Label>
                 {fieldInput(draft[key], key, (value) => setField(key, value))}
-                {draft[key] && <div className="mt-1 rounded bg-muted/40 p-2 text-sm"><LatexText value={Array.isArray(draft[key]) ? draft[key].join(" | ") : draft[key]} /></div>}
+                {draft[key] && <div className="mt-1 rounded bg-muted/40 p-2 text-sm"><QuestionLatexRenderer value={Array.isArray(draft[key]) ? draft[key].join(" | ") : draft[key]} /></div>}
               </div>
             ))}
             <Button onClick={save} className="w-full">
