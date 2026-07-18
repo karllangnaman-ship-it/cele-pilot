@@ -190,6 +190,11 @@ const writeStudyHistoryQueue = (uid, records) => {
 const toHistoryRecord = (item) => ({ id: item.id, ...item.data() });
 
 const studyHistory = {
+  async list() {
+    const uid = await getUserId();
+    const snapshot = await getDocs(getUserCollectionRef(uid, 'studyHistory'));
+    return snapshot.docs.map(toHistoryRecord);
+  },
   async save(record) {
     const uid = await getUserId(record.userId || record.user_id);
     const id = record.id || crypto.randomUUID();
@@ -255,12 +260,12 @@ const studyHistory = {
       throw error;
     }
   },
-  subscribe(callback, pageSize = 50) {
+  subscribe(callback) {
     const uid = auth.currentUser?.uid;
     if (!uid) return () => {};
     try {
       return onSnapshot(
-        query(getUserCollectionRef(uid, 'studyHistory'), orderBy('startTime', 'desc'), limit(pageSize)),
+        query(getUserCollectionRef(uid, 'studyHistory'), orderBy('startTime', 'desc')),
         (snapshot) => callback(snapshot.docs.map(toHistoryRecord)),
         (error) => { console.error('Study history realtime subscription failed.', error); callback([]); },
       );

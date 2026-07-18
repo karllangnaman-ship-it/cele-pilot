@@ -27,20 +27,24 @@ export default function Timer() {
   const [pausedCount, setPausedCount] = useState(0);
   const intervalRef = useRef(null);
   const savingRef = useRef(false);
+  const interactedRef = useRef(false);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     async function load() {
       const u = await firebaseApi.auth.me(); setUser(u);
       firebaseApi.studyHistory.flushPending().catch(() => {});
       const states = await firebaseApi.entities.TimerState.filter({ user_id: u.id });
-      if (!states.length) return;
+      if (!states.length) { hydratedRef.current = true; return; }
       const s = states[0]; setTimerState(s);
+      if (interactedRef.current) { hydratedRef.current = true; return; }
       const elapsed = s.is_running && s.last_tick_at ? Math.floor((Date.now() - new Date(s.last_tick_at).getTime()) / 1000) : 0;
       const nextRemaining = Math.max(0, (s.remaining_seconds ?? durationParam * 60) - elapsed);
       setRemaining(nextRemaining); setTotalSeconds(s.total_seconds || durationParam * 60);
       setSubject(s.subject || subjectParam); setTimerType(s.timer_type || 'study');
       setSessionStart(s.session_start || null); setPausedCount(s.paused_count || 0);
       if (s.is_running && nextRemaining > 0) setIsRunning(true);
+      hydratedRef.current = true;
     }
     load().catch(() => {});
     const sync = () => firebaseApi.studyHistory.flushPending().catch(() => {});
@@ -94,6 +98,7 @@ export default function Timer() {
   useEffect(() => { if (isRunning && remaining % 10 === 0) persistState(remaining, true).catch(() => {}); }, [remaining, isRunning, persistState]);
 
   const toggleTimer = () => {
+    interactedRef.current = true;
     const next = !isRunning;
     const nextStart = next && !sessionStart ? new Date().toISOString() : sessionStart;
     const nextPauses = !next && sessionStart ? pausedCount + 1 : pausedCount;
@@ -101,10 +106,10 @@ export default function Timer() {
     persistState(remaining, next, { session_start: nextStart, paused_count: nextPauses }).catch(() => {});
     if (next && Notification.permission === 'default') Notification.requestPermission();
   };
-  const endSession = async () => { setIsRunning(false); await saveSession(false); await persistState(remaining, false, { session_start: null, paused_count: 0 }); };
-  const resetTimer = () => { setIsRunning(false); setRemaining(totalSeconds); setSessionStart(null); setPausedCount(0); persistState(totalSeconds, false, { session_start: null, paused_count: 0 }).catch(() => {}); };
-  const adjustTime = (minutes) => { const total = Math.max(60, totalSeconds + minutes * 60); const rem = Math.max(0, remaining + minutes * 60); setTotalSeconds(total); setRemaining(rem); };
-  const setPreset = (mins, type) => { setIsRunning(false); setTotalSeconds(mins * 60); setRemaining(mins * 60); setTimerType(type); setSessionStart(null); setPausedCount(0); };
+  const endSession = async () => { interactedRef.current = true; setIsRunning(false); await saveSession(false); await persistState(remaining, false, { session_start: null, paused_count: 0 }); };
+  const resetTimer = () => { interactedRef.current = true; setIsRunning(false); setRemaining(totalSeconds); setSessionStart(null); setPausedCount(0); persistState(totalSeconds, false, { session_start: null, paused_count: 0 }).catch(() => {}); };
+  const adjustTime = (minutes) => { interactedRef.current = true; const total = Math.max(60, totalSeconds + minutes * 60); const rem = Math.max(0, remaining + minutes * 60); setTotalSeconds(total); setRemaining(rem); };
+  const setPreset = (mins, type) => { interactedRef.current = true; setIsRunning(false); setTotalSeconds(mins * 60); setRemaining(mins * 60); setTimerType(type); setSessionStart(null); setPausedCount(0); };
   const setCustom = () => { const mins = Number(customMinutes); if (mins > 0) { setPreset(mins, 'study'); setCustomMinutes(''); } };
   const pct = totalSeconds ? ((totalSeconds - remaining) / totalSeconds) * 100 : 0;
   const circumference = 2 * Math.PI * 120;

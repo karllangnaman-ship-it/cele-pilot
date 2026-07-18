@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { firebaseApi } from '@/api/firebaseClient';
+import { useStudyHistory } from '@/hooks/useStudyHistory';
 import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Clock, BookOpen, Target, Flame, Calendar, Award } from 'lucide-react';
@@ -10,23 +11,21 @@ const COLORS = ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
 export default function Stats() {
   const [user, setUser] = useState(null);
   const [tasks, setTasks] = useState([]);
-  const [timerHistory, setTimerHistory] = useState([]);
   const [achievements, setAchievements] = useState([]);
   const [examHistory, setExamHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { records: studyHistory, loading: loadingStudyHistory } = useStudyHistory(user?.id);
 
   useEffect(() => {
     async function load() {
       const u = await firebaseApi.auth.me();
       setUser(u);
-      const [t, th, a, exams] = await Promise.all([
+      const [t, a, exams] = await Promise.all([
         firebaseApi.entities.StudyTask.filter({ user_id: u.id }),
-        firebaseApi.entities.TimerHistory.filter({ user_id: u.id }),
         firebaseApi.entities.Achievement.filter({ user_id: u.id }),
         firebaseApi.entities.ExamHistory.filter({ user_id: u.id }),
       ]);
       setTasks(t);
-      setTimerHistory(th);
       setAchievements(a);
       setExamHistory(exams);
       setLoading(false);
@@ -34,7 +33,7 @@ export default function Stats() {
     load();
   }, []);
 
-  if (loading) {
+  if (loading || loadingStudyHistory) {
     return <div className="flex items-center justify-center h-[60vh]"><div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
   }
 
@@ -47,20 +46,20 @@ export default function Stats() {
   const subtopicAccuracy = by('subtopic');
   const averageExamScore = examHistory.length ? Math.round(examHistory.reduce((sum, exam) => sum + Number(exam.percentage || 0), 0) / examHistory.length) : 0;
   const bestExamScore = Math.max(0, ...examHistory.map((exam) => Number(exam.percentage || 0)));
-  const totalStudyMinutes = timerHistory.reduce((sum, h) => sum + (h.duration_minutes || 0), 0);
+  const totalStudyMinutes = studyHistory.reduce((sum, h) => sum + (h.durationMinutes ?? h.duration_minutes ?? 0), 0);
 
   // Weekly data
   const weeklyData = Array.from({ length: 7 }, (_, i) => {
     const date = format(subDays(new Date(), 6 - i), 'yyyy-MM-dd');
     const dayTasks = tasks.filter(t => t.date === date && t.completed);
-    const dayMinutes = timerHistory.filter(h => h.date === date).reduce((sum, h) => sum + (h.duration_minutes || 0), 0);
+    const dayMinutes = studyHistory.filter(h => h.date === date).reduce((sum, h) => sum + (h.durationMinutes ?? h.duration_minutes ?? 0), 0);
     return { day: format(subDays(new Date(), 6 - i), 'EEE'), tasks: dayTasks.length, minutes: dayMinutes };
   });
 
   // Subject distribution
   const subjectData = ['MSTE', 'HGE', 'PSAD'].map(s => ({
     name: s,
-    value: timerHistory.filter(h => h.subject === s).reduce((sum, h) => sum + (h.duration_minutes || 0), 0),
+    value: studyHistory.filter(h => h.subject === s).reduce((sum, h) => sum + (h.durationMinutes ?? h.duration_minutes ?? 0), 0),
   })).filter(d => d.value > 0);
 
   // Streak
