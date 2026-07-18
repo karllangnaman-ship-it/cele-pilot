@@ -14,6 +14,7 @@ export const blankFormula = () => ({
   description: "",
   remarks: "",
   figureUrl: "",
+  figureLabel: "",
   difficulty: "",
   variableSymbol1: "",
   variableMeaning1: "",
@@ -128,6 +129,7 @@ export function mapSpreadsheetRow(row, type) {
         formula: first(values, "formula", "equation"),
         description: first(values, "description"),
         remarks: first(values, "remarks"),
+        figureLabel: first(values, "figurelabel"),
         figureUrl: first(values, "figureurl", "imageurl"),
         difficulty: first(values, "difficulty"),
         variableSymbol1: first(values, "variablesymbol1"),
@@ -169,8 +171,10 @@ export function mapSpreadsheetRow(row, type) {
       situationKey: isStandalone ? "" : situationKey,
       situationTitle: isStandalone ? "" : first(values, "situationtitle"),
       situationDescription: isStandalone ? "" : first(values, "situationdescription", "situation"),
-      imageUrl: isStandalone ? "" : first(values, "imageurl"),
-      figureLabel: isStandalone ? "" : first(values, "figurelabel"),
+      // Images belong to a Situation when present, but are also valid on an
+      // individual standalone question.
+      imageUrl: first(values, "imageurl"),
+      figureLabel: first(values, "figurelabel"),
       subject: first(values, "subject"),
       topic: first(values, "topic"),
       subtopic: first(values, "subtopic", "subtopic"),

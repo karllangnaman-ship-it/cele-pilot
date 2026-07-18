@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { GripVertical } from "lucide-react";
 import LatexFormula, { LatexInline, LatexText } from "@/components/LatexFormula";
 import FigureViewer from "@/components/FigureViewer";
@@ -31,14 +31,6 @@ export default function FormulaCard({ formula, actions, onRegenerateIllustration
   const folder = formula.folder || formula.topic;
   const subFolder = formula.subFolder || formula.subtopic;
   const figureUrl = formula.figureUrl || formula.imageUrl || null;
-  useEffect(() => {
-    if (figureUrl)
-      console.info("[Formula] image URL used", {
-        formulaId: formula.id,
-        formulaName: formula.name,
-        figureUrl,
-      });
-  }, [figureUrl, formula.id, formula.name]);
   return (
     <article ref={innerRef} {...draggableProps} className={`glass-card p-3 transition-shadow duration-200 ${isDragging ? "scale-[1.015] shadow-2xl ring-1 ring-primary/30" : ""}`}>
       <div className="flex justify-between gap-2">
@@ -59,16 +51,17 @@ export default function FormulaCard({ formula, actions, onRegenerateIllustration
       </div>
       {figureUrl && (
         <div className="mt-3">
-          <FigureViewer url={figureUrl} label={`${formula.name} figure`} />
+          {formula.figureLabel && <p className="mb-2 text-sm font-medium"><LatexText value={formula.figureLabel} /></p>}
+          <FigureViewer url={figureUrl} label={formula.figureLabel || `${formula.name} figure`} />
         </div>
       )}
-      <LatexFormula value={formula.formula} className="mt-3 text-lg" />
       {formula.description && (
         <div className="mt-2 text-sm">
           <p className="font-medium">Description</p>
           <LatexText value={formula.description} />
         </div>
       )}
+      <LatexFormula value={formula.formula} className="mt-3 text-lg" />
       {(formula.engineeringIllustrationUrl || illustrating) && <EngineeringIllustration imageUrl={formula.engineeringIllustrationUrl} caption={formula.engineeringIllustrationCaption || `Textbook-style engineering illustration for ${formula.name}.`} generating={illustrating} onRegenerate={onRegenerateIllustration} />}
       {variables.length > 0 && (
         <div className="mt-3 border-t pt-2 text-sm">

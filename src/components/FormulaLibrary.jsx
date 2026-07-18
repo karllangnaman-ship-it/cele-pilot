@@ -62,6 +62,7 @@ const formulaFields = [
   ["formula", "Formula (LaTeX supported) *"],
   ["description", "Description (optional)"],
   ["remarks", "Remarks (optional)"],
+  ["figureLabel", "Figure Label (optional)"],
   ["figureUrl", "Figure URL (optional)"],
   ["references", "Reference (optional)"],
   ["tags", "Tags (comma separated)"],
@@ -365,7 +366,7 @@ export default function FormulaLibrary() {
         signal: controller.signal,
         onProgress: setAiStatus,
         schema: formulaSchema,
-        prompt: `You are a precise professional civil engineering formula librarian. ${request} Subject: ${aiConfig.subject}. Difficulty: ${aiConfig.difficulty}. ${aiConfig.topic ? `Topic: ${aiConfig.topic}.` : "Choose an appropriate topic."} ${aiConfig.subTopic ? `Sub Topic: ${aiConfig.subTopic}.` : ""} Return JSON only with an items array. Every item must include subject, folder (Topic), subFolder (Sub Topic when applicable), name, formula in valid LaTeX without dollar delimiters, a concise description, reference, tags array, difficulty, an optional figure suggestion in figureUrl only when genuinely useful, engineering meaning in remarks, and up to five complete variableSymbolN, variableMeaningN, variableUnitN entries. Ensure variable definitions and units are technically correct.`,
+        prompt: `You are a precise professional civil engineering formula librarian. ${request} Subject: ${aiConfig.subject}. Difficulty: ${aiConfig.difficulty}. ${aiConfig.topic ? `Topic: ${aiConfig.topic}.` : "Choose an appropriate topic."} ${aiConfig.subTopic ? `Sub Topic: ${aiConfig.subTopic}.` : ""} Return JSON only with an items array. Every item must include subject, folder (Topic), subFolder (Sub Topic when applicable), name, formula in valid LaTeX without dollar delimiters, a concise description, reference, tags array, difficulty, an optional figureLabel and figureUrl only when genuinely useful, engineering meaning in remarks, and up to five complete variableSymbolN, variableMeaningN, variableUnitN entries. Ensure variable definitions and units are technically correct.`,
       });
       const generated = generatedArray(result, "items");
       generated.forEach((item) => console.info('[Formula] returned figureUrl', { formulaName: item.name, figureUrl: item.figureUrl || item.imageUrl || null }));
@@ -795,7 +796,7 @@ export default function FormulaLibrary() {
                 }
               />
               <LatexFormula value={item.formula} className="mt-2 rounded bg-muted/40 px-2" />
-              {item.figureUrl && <FigureViewer url={item.figureUrl} label={`${item.name} figure`} />}
+              {item.figureUrl && <>{item.figureLabel && <p className="mt-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}<FigureViewer url={item.figureUrl} label={item.figureLabel || `${item.name} figure`} /></>}
               {item.description && <p className="mt-2 text-sm text-muted-foreground"><LatexText value={item.description} /></p>}
               {item.engineeringIllustrationUrl && <EngineeringIllustration imageUrl={item.engineeringIllustrationUrl} caption={item.engineeringIllustrationCaption} generating={illustratingKey === item.previewId} onRegenerate={() => generateIllustration(item, true)} />}
             </div>

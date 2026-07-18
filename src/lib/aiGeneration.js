@@ -109,6 +109,7 @@ export const formulaSchema = {
           tags: { type: "array", items: string },
           difficulty: string,
           figureUrl: string,
+          figureLabel: string,
           imageUrl: string,
           variableSymbol1: string,
           variableMeaning1: string,

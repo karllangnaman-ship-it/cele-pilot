@@ -64,8 +64,8 @@ const questionFields = [
   ["solution", "Solution (optional)"],
   ["remarks", "Remarks (optional)"],
   ["questionSource", "Question Source (optional)"],
-  ["figureLabel", "Figure label"],
-  ["imageUrl", "Image URL (HTTP/HTTPS)"],
+  ["figureLabel", "Figure Label (optional)"],
+  ["imageUrl", "Image URL (optional, HTTP/HTTPS)"],
   ["tags", "Tags (comma separated)"],
 ];
 const situationFields = [
@@ -297,8 +297,6 @@ export default function ContentLibrary({ type }) {
         situationTitle: "",
         situationDescription: "",
         questionNumber: "",
-        imageUrl: null,
-        figureLabel: "",
       };
     if (editing?.id) {
       const updated = await Entity.update(editing.id, payload);
@@ -325,7 +323,7 @@ export default function ContentLibrary({ type }) {
         signal: controller.signal,
         onProgress: setAiStatus,
         schema: questionSchema,
-        prompt: `Generate exactly ${ai.count} non-duplicate, realistic Philippine Civil Engineering Licensure Examination (CELE) multiple-choice questions. Subject: ${ai.subject}. Difficulty: ${ai.difficulty}. ${ai.topic ? `Topic: ${ai.topic}.` : "Choose a balanced relevant topic."} ${ai.subTopic ? `Sub topic: ${ai.subTopic}.` : ""} ${ai.situationType ? `Situation based: ${ai.situationType}.` : "Use isolated questions unless a shared situation materially improves the question."} Return JSON only with an items array. Each item must have subject, topic, question, exactly four choices in order A-D, correctAnswer as A/B/C/D, explanation, difficulty, tags array, and optional situationTitle/situationDescription. Make calculations and concepts technically correct.`,
+        prompt: `Generate exactly ${ai.count} non-duplicate, realistic Philippine Civil Engineering Licensure Examination (CELE) multiple-choice questions. Subject: ${ai.subject}. Difficulty: ${ai.difficulty}. ${ai.topic ? `Topic: ${ai.topic}.` : "Choose a balanced relevant topic."} ${ai.subTopic ? `Sub topic: ${ai.subTopic}.` : ""} ${ai.situationType ? `Situation based: ${ai.situationType}.` : "Use isolated questions unless a shared situation materially improves the question."} Return JSON only with an items array. Each item must have subject, topic, question, exactly four choices in order A-D, correctAnswer as A/B/C/D, explanation, difficulty, tags array, and optional situationTitle/situationDescription. Standalone questions may also include an optional figureLabel and direct HTTP/HTTPS imageUrl when a diagram is genuinely useful; otherwise leave them empty. Make calculations and concepts technically correct.`,
       });
       const generated = generatedArray(result, "items");
       setPreview(
@@ -407,6 +405,12 @@ export default function ContentLibrary({ type }) {
   const questionCard = (item) => {
     return (
       <article key={item.id} className="rounded-lg border p-3">
+        {!item.situationId && item.imageUrl && (
+          <div className="mb-3">
+            {item.figureLabel && <p className="mb-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}
+            <FigureViewer url={item.imageUrl} label={item.figureLabel || "Question figure"} />
+          </div>
+        )}
         <div className="flex justify-between gap-2">
           <div>
             <h3 className="font-semibold">
@@ -454,14 +458,6 @@ export default function ContentLibrary({ type }) {
             </Button>
           </div>
         </div>
-        {item.imageUrl && (
-          <div className="mt-2">
-            <FigureViewer
-              url={item.imageUrl}
-              label={item.figureLabel || "Question figure"}
-            />
-          </div>
-        )}
         <ol className="mt-2 grid gap-1 text-sm list-[upper-alpha] pl-5">
           {(item.choices || []).map((choice, index) => (
             <li key={index}>
@@ -655,12 +651,16 @@ export default function ContentLibrary({ type }) {
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-                {(item.situationTitle || item.situationDescription || item.imageUrl) && (
+                {(item.situationTitle || item.situationDescription) && (
                   <SituationViewer
                     situation={{ title: item.situationTitle, description: item.situationDescription, imageUrl: item.imageUrl, figureLabel: item.figureLabel }}
                     className="rounded-lg border p-3"
                   />
                 )}
+                {!item.situationTitle && !item.situationDescription && item.imageUrl && <div>
+                  {item.figureLabel && <p className="mb-2 text-sm font-medium"><LatexText value={item.figureLabel} /></p>}
+                  <FigureViewer url={item.imageUrl} label={item.figureLabel || "Question figure"} />
+                </div>}
                 {fields.map(([key, label]) => (
                   <div key={key}>
                     <Label>{label}</Label>
