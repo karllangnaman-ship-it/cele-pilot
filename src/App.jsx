@@ -9,6 +9,7 @@ import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { AchievementProvider } from '@/components/AchievementProvider';
+import { StudyTimerProvider } from '@/lib/StudyTimerContext';
 
 const FirebaseConfigurationError = ({ message }) => (
   <main className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -116,7 +117,7 @@ function App() {
           <Router>
             <ScrollToTop />
             <AchievementProvider>
-              <AuthenticatedApp />
+              <StudyTimerProvider><AuthenticatedApp /></StudyTimerProvider>
             </AchievementProvider>
           </Router>
           <Toaster />

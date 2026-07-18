@@ -26,6 +26,7 @@ import {
   onSnapshot,
   limit,
   startAfter,
+  runTransaction,
 } from 'firebase/firestore';
 import { auth, db, googleProvider, firebaseInitializationError } from '@/firebase';
 import { supabaseStorage } from '@/services/supabaseStorage';
@@ -288,6 +289,42 @@ const studyHistory = {
   },
 };
 
+// A timer is a singleton, rather than an entity list.  A fixed document id is
+// important here: it prevents concurrent Play clicks/devices from creating
+// independent clocks.
+const studyTimer = {
+  async get() {
+    const uid = await getUserId();
+    const snapshot = await getDoc(getUserDocRef(uid, 'timerStates', 'active'));
+    return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+  },
+  async save(state) {
+    const uid = await getUserId(state.user_id);
+    const payload = { ...state, user_id: uid, updatedAt: serverTimestamp() };
+    await firestoreSetDoc(getUserDocRef(uid, 'timerStates', 'active'), payload, { merge: true });
+    return { id: 'active', ...state, user_id: uid };
+  },
+  subscribe(callback) {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return () => {};
+    return onSnapshot(getUserDocRef(uid, 'timerStates', 'active'),
+      (snapshot) => callback(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null),
+      (error) => console.error('Study timer realtime subscription failed.', error));
+  },
+  async claimCompletion(sessionId) {
+    const uid = await getUserId();
+    const ref = getUserDocRef(uid, 'timerStates', 'active');
+    return runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists()) return false;
+      const state = snapshot.data();
+      if (state.session_id !== sessionId || state.completion_saved) return false;
+      transaction.update(ref, { is_running: false, remaining_seconds: 0, completion_saved: true, expected_finish_at: null, updatedAt: serverTimestamp() });
+      return true;
+    });
+  },
+};
+
 const getGeminiErrorMessage = async (response) => {
   try {
     const errorData = await response.json();
@@ -471,6 +508,7 @@ export const firebaseApi = {
     },
   },
   entities: buildEntityMap(),
+  studyTimer,
   studyHistory,
   integrations: {
     Core: coreIntegrations,
