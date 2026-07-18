@@ -576,6 +576,17 @@ export default function FormulaLibrary() {
       </Button>
     </div>
   );
+  const reorderVisible = async (visible, sourceIndex, destinationIndex) => {
+    if (sourceIndex === destinationIndex) return;
+    const previous = [...visible].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const next = [...previous]; const [moved] = next.splice(sourceIndex, 1); next.splice(destinationIndex, 0, moved);
+    const start = Math.min(sourceIndex, destinationIndex);
+    const affected = next.slice(start);
+    setItems((current) => current.map((item) => { const index = next.findIndex((entry) => entry.id === item.id); return index < 0 ? item : { ...item, order: index + 1 }; }));
+    try { await Promise.all(affected.map((item, index) => firebaseApi.entities.Formula.update(item.id, { order: start + index + 1 }))); }
+    catch (error) { setItems((current) => current.map((item) => { const index = previous.findIndex((entry) => entry.id === item.id); return index < 0 ? item : { ...item, order: index + 1 }; })); toast({ title: 'Unable to save formula order', description: error.message || 'Previous order restored.', variant: 'destructive' }); }
+  };
+  const sortableCards = (id, formulas, className = 'mt-3') => <DragDropContext onDragEnd={({ source, destination }) => destination && reorderVisible(formulas, source.index, destination.index)}><Droppable droppableId={id}>{(provided) => <div ref={provided.innerRef} {...provided.droppableProps} className={`${className} grid gap-3 lg:grid-cols-2`}>{[...formulas].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((item, index) => <Draggable key={item.id} draggableId={item.id} index={index}>{(drag, snapshot) => <FormulaCard formula={item} actions={actions(item)} illustrating={illustratingKey === item.id} onRegenerateIllustration={() => generateIllustration(item)} innerRef={drag.innerRef} draggableProps={drag.draggableProps} dragHandleProps={drag.dragHandleProps} isDragging={snapshot.isDragging} />}</Draggable>)}{provided.placeholder}</div>}</Droppable></DragDropContext>;
   const folderHeader = (subject, folder, subFolder = "") => (
     <div className="flex items-center gap-1">
       <h3 className={subFolder ? "font-medium text-sm" : "font-semibold"}>
@@ -663,13 +674,21 @@ export default function FormulaLibrary() {
             <section key={subject} className="glass-card p-4">
               <h2 className="text-lg font-bold"><LatexText value={subject} /></h2>
               {group.direct.length > 0 && (
+<<<<<<< HEAD
                 formulaList(`${subject}--root`, group.direct)
+=======
+                sortableCards(`${subject}-root`, group.direct)
+>>>>>>> 71bc133 (stresss)
               )}
               {[...group.folders.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, node]) => {
                 const topicKey = `${subject}\u0000${folder}`;
                 return <Collapsible key={folder} open={expandedTopic === topicKey} onOpenChange={(open) => { setExpandedTopic(open ? topicKey : ''); setExpandedSubTopic(''); }} className="mt-4 border-l-2 border-primary/30 pl-4">
                   <div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-4 w-4 transition-transform ${expandedTopic === topicKey ? 'rotate-180' : ''}`} /><span className="font-semibold"><LatexText value={folder} /></span></CollapsibleTrigger>{folderHeader(subject, folder).props.children.slice(1)}</div>
+<<<<<<< HEAD
                   <CollapsibleContent>{node.direct.length > 0 && formulaList(`${subject}--${folder}--root`, node.direct)}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent>{formulaList(`${subject}--${folder}--${subFolder}`, subItems, "mt-2")}</CollapsibleContent></Collapsible>; })}</CollapsibleContent>
+=======
+                  <CollapsibleContent>{node.direct.length > 0 && sortableCards(`${subject}-${folder}-root`, node.direct)}{[...node.subs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([subFolder, subItems]) => { const subKey = `${topicKey}\u0000${subFolder}`; return <Collapsible key={subFolder} open={expandedSubTopic === subKey} onOpenChange={(open) => setExpandedSubTopic(open ? subKey : '')} className="mt-3 border-l pl-4"><div className="flex items-center"><CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedSubTopic === subKey ? 'rotate-180' : ''}`} /><span className="text-sm font-medium"><LatexText value={subFolder} /></span></CollapsibleTrigger>{folderHeader(subject, folder, subFolder).props.children.slice(1)}</div><CollapsibleContent>{sortableCards(`${subject}-${folder}-${subFolder}`, subItems, 'mt-2')}</CollapsibleContent></Collapsible>; })}</CollapsibleContent>
+>>>>>>> 71bc133 (stresss)
                 </Collapsible>;
               })}
             </section>
