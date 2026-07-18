@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ChevronRight, Folder, Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import ImportExport from "@/components/flashcards/ImportExport";
 import RemoteFigure from "@/components/RemoteFigure";
 import SituationViewer from "@/components/SituationViewer";
-import LatexFormula, { LatexText } from "@/components/LatexFormula";
+import { LatexText } from "@/components/LatexFormula";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import SearchBar from "@/components/content/SearchBar";
 import SubjectFilter from "@/components/content/SubjectFilter";
 import FormulaLibrary from "@/components/FormulaLibrary";
@@ -34,7 +35,7 @@ import {
 
 const formulaFields = [
   ["subject", "Subject"],
-  ["topic", "Topic"],
+  ["topic", "Topic (optional)"],
   ["subtopic", "Subtopic"],
   ["name", "Formula name"],
   ["formula", "Formula (LaTeX supported)"],
@@ -53,13 +54,16 @@ const formulaFields = [
 ];
 const questionFields = [
   ["subject", "Subject"],
-  ["topic", "Topic"],
+  ["topic", "Topic (optional)"],
   ["subtopic", "Sub Topic (optional)"],
   ["difficulty", "Difficulty"],
   ["question", "Question"],
   ["choices", "Choices A-D (separate with |)"],
   ["correctAnswer", "Correct answer"],
   ["explanation", "Explanation"],
+  ["solution", "Solution (optional)"],
+  ["remarks", "Remarks (optional)"],
+  ["questionSource", "Question Source (optional)"],
   ["figureLabel", "Figure label"],
   ["imageUrl", "Image URL (HTTP/HTTPS)"],
   ["tags", "Tags (comma separated)"],
@@ -77,8 +81,36 @@ const textAreas = new Set([
   "description",
   "explanation",
   "solution",
+  "remarks",
+  "solution",
   "exampleProblem",
 ]);
+
+const cleanValue = (value) => String(value || "").trim();
+const createQuestionGroup = () => ({ situations: new Map(), standalone: [] });
+const questionTotal = (group) => group.standalone.length + [...group.situations.values()].reduce((total, situation) => total + situation.questions.length, 0);
+
+function QuestionSections({ group, renderQuestion }) {
+  return <div className="ml-5 space-y-4 border-l pl-3">
+    {[...group.situations.values()].map((situation) => <SituationViewer key={situation.id} situation={situation.detail || { externalId: `Situation - ${situation.identifier}` }} className="glass-card space-y-3 p-4">
+      <div className="space-y-2">{situation.questions.map(renderQuestion)}</div>
+    </SituationViewer>)}
+    {group.standalone.length > 0 && <section className="space-y-2"><div className="rounded-md bg-muted/50 px-3 py-2 font-medium">Standalone</div><div className="space-y-2 pl-2">{group.standalone.map(renderQuestion)}</div></section>}
+  </div>;
+}
+
+function ExpandableFolder({ label, children, count, depth = 0 }) {
+  const [open, setOpen] = useState(depth < 1);
+  return <Collapsible open={open} onOpenChange={setOpen} className={depth ? "ml-3 border-l pl-3" : ""}>
+    <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/60">
+      <ChevronRight className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+      <Folder className="h-4 w-4 text-primary" />
+      <span className="font-medium">{label}</span>
+      <span className="text-xs text-muted-foreground">({count})</span>
+    </CollapsibleTrigger>
+    <CollapsibleContent className="space-y-2 pb-2">{children}</CollapsibleContent>
+  </Collapsible>;
+}
 
 export default function ContentLibrary({ type }) {
   if (type === "formula") return <FormulaLibrary />;
@@ -101,6 +133,9 @@ export default function ContentLibrary({ type }) {
   const [questionTypeFilter, setQuestionTypeFilter] = useState("all");
   const [topicFilter, setTopicFilter] = useState("");
   const [subTopicFilter, setSubTopicFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [difficultyFilter, setDifficultyFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [questionType, setQuestionType] = useState("standalone");
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState([]);
@@ -111,6 +146,7 @@ export default function ContentLibrary({ type }) {
     difficulty: "medium",
     count: 10,
     situationType: "",
+    questionSource: "AI Generated",
   });
   const [aiOpen, setAiOpen] = useState(false);
   const [aiStatus, setAiStatus] = useState("");
@@ -151,12 +187,17 @@ export default function ContentLibrary({ type }) {
         String(item.subtopic || "")
           .toLowerCase()
           .includes(subTopicFilter.toLowerCase());
+      const matchesSource = !sourceFilter || String(item.questionSource || "").toLowerCase().includes(sourceFilter.toLowerCase());
+      const matchesDifficulty = !difficultyFilter || String(item.difficulty || "").toLowerCase().includes(difficultyFilter.toLowerCase());
+      const matchesTag = !tagFilter || (Array.isArray(item.tags) ? item.tags : String(item.tags || "").split(",")).some((tag) => String(tag).toLowerCase().includes(tagFilter.toLowerCase()));
       const searchable = isFormula
         ? [
             item.name,
             item.formula,
             item.description,
             item.subject,
+            item.questionSource,
+            item.difficulty,
             item.topic,
             item.tags,
           ]
@@ -174,6 +215,9 @@ export default function ContentLibrary({ type }) {
         matchesSubject &&
         matchesTopic &&
         matchesSubTopic &&
+        matchesSource &&
+        matchesDifficulty &&
+        matchesTag &&
         matchesType &&
         (!q || searchable.join(" ").toLowerCase().includes(q))
       );
@@ -186,6 +230,9 @@ export default function ContentLibrary({ type }) {
     questionTypeFilter,
     topicFilter,
     subTopicFilter,
+    sourceFilter,
+    difficultyFilter,
+    tagFilter,
     isFormula,
   ]);
   const setField = (key, value) =>
@@ -205,6 +252,7 @@ export default function ContentLibrary({ type }) {
     let payload = {
       ...draft,
       user_id: user.id,
+      questionSource: draft.questionSource?.trim() || null,
       tags:
         typeof draft.tags === "string"
           ? draft.tags
@@ -287,6 +335,7 @@ export default function ContentLibrary({ type }) {
               ...item,
               subject: item.subject || ai.subject,
               difficulty: item.difficulty || ai.difficulty,
+              questionSource: ai.questionSource || null,
             },
             type,
             "ai",
@@ -355,25 +404,8 @@ export default function ContentLibrary({ type }) {
         }
       />
     );
-  const questionsBySituation = situations
-    .map((situation) => {
-      const questions = filtered
-        .filter((question) => question.situationId === situation.id)
-        .sort(
-          (a, b) =>
-            Number(a.questionNumber || 0) - Number(b.questionNumber || 0),
-        );
-      return {
-        situation: { ...situation, description: "" },
-        questions: questions.map((question, index) =>
-          index === 0 ? { ...question, situationHeader: situation } : question,
-        ),
-      };
-    })
-    .filter((group) => group.questions.length);
-  const standalone = filtered.filter((question) => !question.situationId);
   const questionCard = (item) => {
-    const card = (
+    return (
       <article key={item.id} className="rounded-lg border p-3">
         <div className="flex justify-between gap-2">
           <div>
@@ -381,9 +413,14 @@ export default function ContentLibrary({ type }) {
               {item.questionNumber ? `Question ${item.questionNumber}: ` : ""}
               <LatexText value={item.question} />
             </h3>
-            <p className="text-xs text-muted-foreground">
-              <LatexText value={item.subject} /> · <LatexText value={item.topic} />
-            </p>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>Type: {item.situationId ? "Situation" : "Standalone"}</span>
+              {item.topic && <span>Topic: {item.topic}</span>}
+              {item.subtopic && <span>Sub Topic: {item.subtopic}</span>}
+              {item.difficulty && <span>Difficulty: {item.difficulty}</span>}
+              {item.questionSource && <span>Source: {item.questionSource}</span>}
+              {Array.isArray(item.tags) ? item.tags.length > 0 && <span>Tags: {item.tags.join(", ")}</span> : item.tags && <span>Tags: {item.tags}</span>}
+            </div>
           </div>
           <div className="flex">
             <Button
@@ -439,17 +476,33 @@ export default function ContentLibrary({ type }) {
         )}
       </article>
     );
-    return item.situationHeader ? (
-      <SituationViewer
-        situation={item.situationHeader}
-        className="glass-card space-y-3 p-4"
-      >
-        {card}
-      </SituationViewer>
-    ) : (
-      card
-    );
   };
+  const questionTree = useMemo(() => {
+    const root = new Map();
+    filtered.forEach((question) => {
+      const subject = cleanValue(question.subject) || "Uncategorized";
+      let subjectNode = root.get(subject);
+      if (!subjectNode) { subjectNode = { label: subject, group: createQuestionGroup(), sources: new Map() }; root.set(subject, subjectNode); }
+      const source = cleanValue(question.questionSource);
+      const group = source
+        ? (subjectNode.sources.get(source) || (() => { const next = createQuestionGroup(); subjectNode.sources.set(source, next); return next; })())
+        : subjectNode.group;
+      if (question.situationId) {
+        const situation = situations.find((entry) => entry.id === question.situationId);
+        const id = question.situationId;
+        if (!group.situations.has(id)) group.situations.set(id, { id, identifier: situation?.externalId || situation?.title || question.situationKey || id, detail: situation, questions: [] });
+        group.situations.get(id).questions.push(question);
+      } else {
+        group.standalone.push(question);
+      }
+    });
+    const sortGroup = (group) => {
+      group.standalone.sort((a, b) => Number(a.questionNumber || 0) - Number(b.questionNumber || 0));
+      group.situations.forEach((situation) => situation.questions.sort((a, b) => Number(a.questionNumber || 0) - Number(b.questionNumber || 0)));
+    };
+    root.forEach((subject) => { sortGroup(subject.group); subject.sources.forEach(sortGroup); });
+    return [...root.values()];
+  }, [filtered, situations]);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3 justify-between">
@@ -519,6 +572,9 @@ export default function ContentLibrary({ type }) {
                 onChange={(event) => setSubTopicFilter(event.target.value)}
                 placeholder="Filter sub topic"
               />
+              <Input className="w-40" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} placeholder="Filter source" />
+              <Input className="w-32" value={difficultyFilter} onChange={(event) => setDifficultyFilter(event.target.value)} placeholder="Difficulty" />
+              <Input className="w-32" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} placeholder="Filter tags" />
               <div className="flex rounded-md border p-1 text-sm">
                 <Button
                   size="sm"
@@ -547,27 +603,11 @@ export default function ContentLibrary({ type }) {
                 </Button>
               </div>
             </div>
-            <div className="space-y-3">
-              {questionsBySituation.map(({ situation, questions }) => (
-                <section
-                  className="glass-card p-4 space-y-3"
-                  key={situation.id}
-                >
-                  <div>
-                    <h2 className="font-semibold">
-                      <LatexText value={situation.externalId || "Situation"} />
-                      {situation.title && <> — <LatexText value={situation.title} /></>}
-                    </h2>
-                    {situation.description && (
-                      <p className="mt-2 whitespace-pre-wrap text-sm">
-                        <LatexText value={situation.description} />
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">{questions.map(questionCard)}</div>
-                </section>
-              ))}
-              {standalone.map(questionCard)}
+            <div className="glass-card space-y-2 p-3">
+              {questionTree.map((subject) => <ExpandableFolder key={subject.label} label={subject.label} count={questionTotal(subject.group) + [...subject.sources.values()].reduce((total, group) => total + questionTotal(group), 0)}>
+                {questionTotal(subject.group) > 0 && <QuestionSections group={subject.group} renderQuestion={questionCard} />}
+                {[...subject.sources.entries()].map(([source, group]) => <ExpandableFolder key={source} label={source} count={questionTotal(group)} depth={1}><QuestionSections group={group} renderQuestion={questionCard} /></ExpandableFolder>)}
+              </ExpandableFolder>)}
             </div>
             {!filtered.length && (
               <div className="glass-card p-12 text-center">
@@ -615,6 +655,12 @@ export default function ContentLibrary({ type }) {
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
+                {(item.situationTitle || item.situationDescription || item.imageUrl) && (
+                  <SituationViewer
+                    situation={{ title: item.situationTitle, description: item.situationDescription, imageUrl: item.imageUrl, figureLabel: item.figureLabel }}
+                    className="rounded-lg border p-3"
+                  />
+                )}
                 {fields.map(([key, label]) => (
                   <div key={key}>
                     <Label>{label}</Label>
@@ -680,6 +726,13 @@ export default function ContentLibrary({ type }) {
                 }))
               }
               placeholder="Situation type (optional): Beam, Truss…"
+            />
+            <Input
+              value={ai.questionSource}
+              onChange={(event) =>
+                setAi((value) => ({ ...value, questionSource: event.target.value }))
+              }
+              placeholder="Question source (optional)"
             />
             <Button className="w-full" onClick={generate} disabled={busy}>
               {busy ? (

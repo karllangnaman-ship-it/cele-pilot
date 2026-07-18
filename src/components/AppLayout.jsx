@@ -16,7 +16,7 @@ const navigationSections = [
   { id: 'storage', label: 'Storage', icon: FolderOpen, items: [bottomNav[2]] },
   { id: 'account', label: 'Account', icon: User, items: [bottomNav[4], { path: '/survey', icon: User, label: 'Edit Profile' }, { path: '/notifications', icon: Bell, label: 'Notifications' }] },
   { id: 'study', label: 'Study', icon: BookOpen, items: [{ path: '/timer', icon: Clock, label: 'Study Timer' }, { path: '/study-history', icon: History, label: 'Study History' }, { path: '/flashcards', icon: Brain, label: 'Flashcards' }, { path: '/notes', icon: FileText, label: 'Notes' }] },
-  { id: 'learning', label: 'Learning', icon: Brain, items: [{ path: '/formula-sheet', icon: Sigma, label: 'Formula Sheet' }, { path: '/question-bank', icon: CircleHelp, label: 'Question Bank' }, { path: '/practice', icon: Dumbbell, label: 'Practice Mode' }, { path: '/mock-board-exam', icon: ClipboardCheck, label: 'Mock Board Exam' }] },
+  { id: 'learning', label: 'Learning', icon: Brain, items: [{ path: '/formula-sheet', icon: Sigma, label: 'Formula Sheet' }, { path: '/question-bank', icon: CircleHelp, label: 'Question Bank' }, { path: '/practice', icon: Dumbbell, label: 'Practice Mode' }, { path: '/mock-board-exam', icon: ClipboardCheck, label: 'Mock Board Exam' }, { path: '/exam-history', icon: History, label: 'Exam History' }, { path: '/mistake-notebook', icon: BookOpen, label: 'Mistake Notebook' }] },
   { id: 'analytics', label: 'Analytics', icon: ChartNoAxesCombined, items: [{ path: '/stats?view=reports', icon: FileText, label: 'Reports' }, { path: '/stats?view=performance', icon: BarChart3, label: 'Performance' }, { path: '/study-history?view=progress', icon: History, label: 'Progress' }] },
 ];
 

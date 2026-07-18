@@ -12,20 +12,23 @@ export default function Stats() {
   const [tasks, setTasks] = useState([]);
   const [timerHistory, setTimerHistory] = useState([]);
   const [achievements, setAchievements] = useState([]);
+  const [examHistory, setExamHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       const u = await firebaseApi.auth.me();
       setUser(u);
-      const [t, th, a] = await Promise.all([
+      const [t, th, a, exams] = await Promise.all([
         firebaseApi.entities.StudyTask.filter({ user_id: u.id }),
         firebaseApi.entities.TimerHistory.filter({ user_id: u.id }),
         firebaseApi.entities.Achievement.filter({ user_id: u.id }),
+        firebaseApi.entities.ExamHistory.filter({ user_id: u.id }),
       ]);
       setTasks(t);
       setTimerHistory(th);
       setAchievements(a);
+      setExamHistory(exams);
       setLoading(false);
     }
     load();
@@ -36,6 +39,14 @@ export default function Stats() {
   }
 
   const completedTasks = tasks.filter(t => t.completed);
+  const examQuestions = examHistory.flatMap((exam) => exam.questions || []);
+  const accuracy = (items) => items.length ? Math.round((items.filter((item) => item.result === 'correct').length / items.length) * 100) : 0;
+  const by = (key) => Object.entries(examQuestions.reduce((groups, question) => { const name = question[key] || 'Uncategorized'; (groups[name] ||= []).push(question); return groups; }, {})).map(([name, items]) => ({ name, value: accuracy(items), count: items.length })).sort((a, b) => a.value - b.value);
+  const subjectAccuracy = by('subject');
+  const topicAccuracy = by('topic');
+  const subtopicAccuracy = by('subtopic');
+  const averageExamScore = examHistory.length ? Math.round(examHistory.reduce((sum, exam) => sum + Number(exam.percentage || 0), 0) / examHistory.length) : 0;
+  const bestExamScore = Math.max(0, ...examHistory.map((exam) => Number(exam.percentage || 0)));
   const totalStudyMinutes = timerHistory.reduce((sum, h) => sum + (h.duration_minutes || 0), 0);
 
   // Weekly data
@@ -86,6 +97,16 @@ export default function Stats() {
           </motion.div>
         ))}
       </div>
+
+      {examHistory.length > 0 && (
+        <div className="glass-card p-4 space-y-4">
+          <div className="flex justify-between"><div><h2 className="font-semibold">Exam Analytics</h2><p className="text-xs text-muted-foreground">Based on completed Practice and Mock Board exams.</p></div><div className="text-right text-sm"><p>Average: <b>{averageExamScore}%</b></p><p>Best: <b>{bestExamScore}%</b></p></div></div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[["Accuracy by Subject", subjectAccuracy], ["Accuracy by Topic", topicAccuracy], ["Accuracy by Sub Topic", subtopicAccuracy]].map(([title, groups]) => <div key={title} className="rounded border p-3"><h3 className="text-sm font-medium">{title}</h3><div className="mt-2 space-y-1 text-xs">{groups.slice(0, 5).map((group) => <div className="flex justify-between gap-2" key={group.name}><span className="truncate">{group.name}</span><b>{group.value}%</b></div>)}</div></div>)}
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 text-sm"><p><span className="text-muted-foreground">Weakest topics:</span> {topicAccuracy.slice(0, 3).map((item) => item.name).join(', ') || '—'}</p><p><span className="text-muted-foreground">Strongest topics:</span> {topicAccuracy.slice(-3).reverse().map((item) => item.name).join(', ') || '—'}</p></div>
+        </div>
+      )}
 
       {/* Weekly chart */}
       <div className="glass-card p-4">

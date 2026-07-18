@@ -176,6 +176,7 @@ const configs = {
       "Correct Answer",
       "Explanation",
       "Difficulty",
+      "Question Source",
       "Tags",
     ],
     sample: [
@@ -198,6 +199,7 @@ const configs = {
         "Correct Answer": "A",
         Explanation: "Normal stress is force divided by area.",
         Difficulty: "medium",
+        "Question Source": "Past Board - November 2021",
         Tags: "stress, mechanics",
       },
       {
@@ -219,6 +221,7 @@ const configs = {
         "Correct Answer": "A",
         Explanation: "Apply equilibrium.",
         Difficulty: "medium",
+        "Question Source": "Review Center",
         Tags: "beam, statics",
       },
     ],
@@ -250,6 +253,7 @@ const configs = {
         "Correct Answer": item.correctAnswer || "",
         Explanation: item.explanation || "",
         Difficulty: item.difficulty || "",
+        "Question Source": item.questionSource || "",
         Tags: Array.isArray(item.tags) ? item.tags.join(", ") : item.tags || "",
       };
     },

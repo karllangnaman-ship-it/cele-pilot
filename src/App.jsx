@@ -45,6 +45,8 @@ import FormulaSheet from '@/pages/FormulaSheet';
 import QuestionBank from '@/pages/QuestionBank';
 import PracticeMode from '@/pages/PracticeMode';
 import MockBoardExam from '@/pages/MockBoardExam';
+import ExamHistory from '@/pages/ExamHistory';
+import MistakeNotebook from '@/pages/MistakeNotebook';
 import AppLayout from '@/components/AppLayout';
 
 const AuthenticatedApp = () => {
@@ -97,6 +99,8 @@ const AuthenticatedApp = () => {
           <Route path="/question-bank" element={<QuestionBank />} />
           <Route path="/practice" element={<PracticeMode />} />
           <Route path="/mock-board-exam" element={<MockBoardExam />} />
+          <Route path="/exam-history" element={<ExamHistory />} />
+          <Route path="/mistake-notebook" element={<MistakeNotebook />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

@@ -168,6 +168,8 @@ const buildEntityMap = () => ({
   PracticeHistory: getEntityApi('practiceHistory'),
   UserFormulaHistory: getEntityApi('userFormulaHistory'),
   UserQuestionHistory: getEntityApi('userQuestionHistory'),
+  ExamHistory: getEntityApi('examHistory'),
+  MistakeNotebook: getEntityApi('mistakeNotebook'),
 });
 
 // Study history deliberately has a small dedicated API instead of using the
