@@ -2,7 +2,6 @@ import admin from 'firebase-admin';
 
 const API = 'https://generativelanguage.googleapis.com/v1beta';
 const ALLOWED_MODELS = new Set(['gemini-3.5-flash', 'gemini-3.1-flash-lite']);
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 function firebaseAdmin() {
   if (admin.apps.length) return admin.app();
@@ -23,21 +22,14 @@ export default async function handler(req, res) {
     await firebaseAdmin().auth().verifyIdToken(token);
     const model = ALLOWED_MODELS.has(req.body?.model) ? req.body.model : 'gemini-3.5-flash';
     const input = Array.isArray(req.body?.messages) ? req.body.messages.slice(-30) : [];
-    if (!input.length || input.some((item) => !['user', 'assistant'].includes(item.role) || typeof item.content !== 'string')) return fail(res, 400, 'A valid conversation is required.');
-    const image = req.body?.image;
-    let imagePart = null;
-    if (image?.data && /^image\/(png|jpeg|webp|gif)$/.test(image.mimeType || '')) {
-      const data = String(image.data).replace(/^data:[^;]+;base64,/, '');
-      if (Buffer.byteLength(data, 'base64') > MAX_IMAGE_BYTES) return fail(res, 413, 'Images must be 10 MB or smaller.');
-      imagePart = { inlineData: { mimeType: image.mimeType, data } };
-    }
-    const contents = input.map((item, index) => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: item.content }, ...(index === input.length - 1 && imagePart ? [imagePart] : [])] }));
+    if (!input.length || input.some((item) => !['user', 'assistant'].includes(item.role) || typeof item.content !== 'string')) return fail(res, 400, 'A valid text conversation is required.');
+    const contents = input.map((item) => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: item.content }] }));
     const upstream = await fetch(`${API}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY || '' },
       body: JSON.stringify({
         contents,
-        systemInstruction: { parts: [{ text: 'You are CELE Pilot Ask AI, a precise and helpful civil engineering study assistant. Use Markdown and LaTex ($...$ or $$...$$) when useful.' }] },
+        systemInstruction: { parts: [{ text: 'You are CELE Pilot Ask AI, a precise and helpful civil engineering study assistant. Use Markdown and valid LaTeX ($...$ for inline math and $$...$$ for display math) when useful.' }] },
       }),
     });
     if (!upstream.ok) { const body = await upstream.json().catch(() => ({})); return fail(res, upstream.status, body?.error?.message || 'Gemini request failed.'); }
