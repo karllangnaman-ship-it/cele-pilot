@@ -78,8 +78,7 @@ export const askAiStore = {
 };
 
 export async function streamAskAi({ messages: history, model, signal, onChunk }) {
-  const token = await auth.currentUser?.getIdToken();
-  const response = await fetch('/api/ask-ai', { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ messages: history, model }) });
+  const response = await fetch('/api/ask-ai', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, model }) });
   if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || 'Ask AI could not complete the request.'); }
   const reader = response.body?.getReader(); if (!reader) throw new Error('Streaming is unavailable in this browser.');
   const decoder = new TextDecoder(); let buffer = ''; let output = '';
