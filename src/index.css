@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import 'katex/dist/katex.min.css';
 
 @tailwind base;
 @tailwind components;
@@ -124,6 +125,19 @@
 .ask-ai-markdown h2 { font-size: 1.25rem; }
 .ask-ai-markdown h3 { font-size: 1.1rem; }
 .ask-ai-markdown p { margin: 0.6rem 0; }
+.katex-display {
+  display: block;
+  margin: 0.3in 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+/* Inline math still needs a taller parent line box when it contains a fraction.
+   This preserves KaTeX's internal vlist/fraction metrics while preventing
+   adjacent Markdown lines from painting over the numerator or denominator. */
+.ask-ai-markdown :is(p, li):has(.katex) {
+  line-height: 2;
+}
 .ask-ai-markdown :is(ul, ol) { margin: 0.6rem 0; padding-left: 1.5rem; }
 .ask-ai-markdown ul { list-style: disc; }
 .ask-ai-markdown ol { list-style: decimal; }
