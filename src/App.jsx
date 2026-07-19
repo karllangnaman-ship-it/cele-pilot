@@ -48,6 +48,7 @@ import PracticeMode from '@/pages/PracticeMode';
 import MockBoardExam from '@/pages/MockBoardExam';
 import ExamHistory from '@/pages/ExamHistory';
 import MistakeNotebook from '@/pages/MistakeNotebook';
+import AskAI from '@/pages/AskAI';
 import AppLayout from '@/components/AppLayout';
 
 const AuthenticatedApp = () => {
@@ -102,6 +103,7 @@ const AuthenticatedApp = () => {
           <Route path="/mock-board-exam" element={<MockBoardExam />} />
           <Route path="/exam-history" element={<ExamHistory />} />
           <Route path="/mistake-notebook" element={<MistakeNotebook />} />
+          <Route path="/ask-ai" element={<AskAI />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
