@@ -115,3 +115,23 @@
 .glass-card-strong {
   @apply bg-card/90 backdrop-blur-2xl border border-border/60 rounded-2xl shadow-xl;
 }
+
+.ask-ai-markdown { overflow-wrap: anywhere; }
+.ask-ai-markdown > :first-child { margin-top: 0; }
+.ask-ai-markdown > :last-child { margin-bottom: 0; }
+.ask-ai-markdown :is(h1, h2, h3) { margin: 1rem 0 0.5rem; font-weight: 700; line-height: 1.25; }
+.ask-ai-markdown h1 { font-size: 1.5rem; }
+.ask-ai-markdown h2 { font-size: 1.25rem; }
+.ask-ai-markdown h3 { font-size: 1.1rem; }
+.ask-ai-markdown p { margin: 0.6rem 0; }
+.ask-ai-markdown :is(ul, ol) { margin: 0.6rem 0; padding-left: 1.5rem; }
+.ask-ai-markdown ul { list-style: disc; }
+.ask-ai-markdown ol { list-style: decimal; }
+.ask-ai-markdown blockquote { margin: 0.75rem 0; border-left: 3px solid hsl(var(--primary)); padding-left: 0.75rem; color: hsl(var(--muted-foreground)); }
+.ask-ai-markdown hr { margin: 1rem 0; border: 0; border-top: 1px solid hsl(var(--border)); }
+.ask-ai-markdown a { color: hsl(var(--primary)); text-decoration: underline; }
+.ask-ai-markdown table { display: block; width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; white-space: nowrap; }
+.ask-ai-markdown :is(th, td) { border: 1px solid hsl(var(--border)); padding: 0.45rem 0.65rem; text-align: left; }
+.ask-ai-markdown th { background: hsl(var(--muted)); font-weight: 600; }
+.ask-ai-markdown tbody tr:nth-child(even) { background: hsl(var(--muted) / 0.35); }
+.ask-ai-markdown input[type='checkbox'] { margin-right: 0.4rem; accent-color: hsl(var(--primary)); }

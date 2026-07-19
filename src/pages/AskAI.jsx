@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import 'katex/dist/katex.min.css';
 import { Check, Copy, FileText, FolderPlus, Maximize2, MoreHorizontal, Paperclip, PanelLeft, Pencil, Plus, Search, Send, Sparkles, Square, Trash2, X } from 'lucide-react';
 import { LatexText } from '@/components/LatexFormula';
 import { askAiStore, streamAskAi, streamAskAiVision } from '@/services/askAi';
@@ -14,6 +22,53 @@ const time = (value) => value?.toDate?.() ? value.toDate().toLocaleDateString() 
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const ACCEPTED_ATTACHMENTS = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf']);
 const formatSize = (size) => `${(size / 1024 / 1024).toFixed(size < 1024 * 1024 ? 1 : 0)} MB`;
+
+/** Convert every supported Gemini response shape into one safe Markdown string. */
+export function normalizeGeminiResponse(response) {
+  const seen = new WeakSet();
+  const extract = (value, allowText = false) => {
+    if (typeof value === 'string') return allowText ? value : '';
+    if (typeof value === 'number' || typeof value === 'boolean') return allowText ? `${value}` : '';
+    if (!value || typeof value !== 'object') return '';
+    if (seen.has(value)) return '';
+    seen.add(value);
+    if (Array.isArray(value)) return value.map((entry) => extract(entry, allowText)).join('');
+
+    const chunks = [];
+    if (Object.prototype.hasOwnProperty.call(value, 'text')) chunks.push(extract(value.text, true));
+    // These are Gemini's text-bearing containers. Traversing them recursively
+    // covers response.parts, candidate.content.parts, and nested Part arrays
+    // while ignoring metadata such as roles, IDs, usage, and inline binary data.
+    for (const key of ['parts', 'content', 'candidates', 'candidate', 'response', 'data', 'result', 'output', 'message', 'inlineData']) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) chunks.push(extract(value[key], key === 'content'));
+    }
+    // Some SDK versions wrap parts in unnamed nested objects. Search those
+    // objects for a `text` field but never append arbitrary metadata strings.
+    for (const child of Object.values(value)) if (child && typeof child === 'object') chunks.push(extract(child, false));
+    return chunks.join('');
+  };
+
+  // Gemini sometimes returns LaTex with \(...\) or \[...\] delimiters. Convert
+  // only non-code regions so remark-math can render it without altering code.
+  return extract(response, true).split(/(```[\s\S]*?```)/g).map((segment, index) => index % 2 ? segment : segment
+    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+    .replace(/\\\(([^\n]*?)\\\)/g, '$$$1$')).join('');
+}
+
+const safeHtmlSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), 'u'],
+  attributes: { ...defaultSchema.attributes, '*': [...(defaultSchema.attributes?.['*'] || []), 'className'], a: [...(defaultSchema.attributes?.a || []), 'target', 'rel'] },
+};
+
+function CodeBlock({ children, className }) {
+  const [copied, setCopied] = useState(false);
+  const code = normalizeGeminiResponse(children).replace(/\n$/, '');
+  const language = /language-([\w+-]+)/.exec(className || '')?.[1];
+  const copy = async () => { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  if (!language) return <code className={`${className || ''} rounded bg-muted px-1 py-0.5 text-xs`}>{children}</code>;
+  return <div className="not-prose relative my-3 overflow-hidden rounded-lg"><button type="button" aria-label="Copy code" onClick={copy} className="absolute right-2 top-2 z-10 rounded bg-background/20 p-1.5 text-white hover:bg-background/35">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}</button><SyntaxHighlighter language={language} style={oneDark} PreTag="div" customStyle={{ margin: 0, padding: '1rem', fontSize: '0.75rem' }}>{code}</SyntaxHighlighter></div>;
+}
 
 function Attachment({ attachment, compact = false, onRemove, onReplace }) {
   if (!attachment) return null;
@@ -30,20 +85,17 @@ function Attachment({ attachment, compact = false, onRemove, onReplace }) {
 
 function Message({ item, onDelete, onRegenerate, onRetry, onEdit }) {
   const [copied, setCopied] = useState(false);
-  const copy = async () => { await navigator.clipboard.writeText(item.content); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  const content = normalizeGeminiResponse(item.content);
+  const copy = async () => { await navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 1400); };
   const markdown = {
-    p: ({ children }) => <p><LatexText value={String(children)} /></p>,
-    li: ({ children }) => <li><LatexText value={String(children)} /></li>,
-    h1: ({ children }) => <h1><LatexText value={String(children)} /></h1>,
-    h2: ({ children }) => <h2><LatexText value={String(children)} /></h2>,
-    h3: ({ children }) => <h3><LatexText value={String(children)} /></h3>,
-    code: ({ children, className }) => <code className={`${className || ''} rounded bg-muted px-1 py-0.5 text-xs`}>{children}<button aria-label="Copy code" className="ml-1 text-muted-foreground" onClick={() => navigator.clipboard.writeText(String(children))}><Copy className="inline h-3 w-3" /></button></code>,
+    code: CodeBlock,
+    a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
   };
   return <article className={`group flex gap-3 ${item.role === 'user' ? 'justify-end' : ''}`}>
     {item.role === 'assistant' && <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 text-white"><Sparkles className="h-4 w-4" /></div>}
     <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm shadow-sm ${item.role === 'user' ? 'bg-primary text-primary-foreground' : 'border border-border/60 bg-card'}`}>
       <Attachment attachment={item} compact />
-      {item.role === 'assistant' ? <div className="ask-ai-markdown prose prose-sm max-w-none dark:prose-invert"><ReactMarkdown components={markdown}>{item.content || '…'}</ReactMarkdown></div> : <LatexText value={item.content} />}
+      {item.role === 'assistant' ? <div className="ask-ai-markdown prose prose-sm max-w-none dark:prose-invert"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, [rehypeSanitize, safeHtmlSchema], [rehypeKatex, { throwOnError: false, strict: 'ignore' }]]} components={markdown}>{content || (item.pending ? '…' : 'No response.')}</ReactMarkdown></div> : <LatexText value={content} />}
       {!item.pending && <div className="mt-2 flex gap-1 opacity-70 transition-opacity group-hover:opacity-100">
         <button aria-label="Copy message" onClick={copy} className="rounded p-1 hover:bg-muted">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}</button>
         {item.role === 'assistant' ? <button aria-label="Regenerate" onClick={onRegenerate} className="rounded p-1 hover:bg-muted"><Sparkles className="h-3.5 w-3.5" /></button> : <><button aria-label="Edit message" onClick={() => onEdit(item)} className="rounded p-1 hover:bg-muted"><Pencil className="h-3.5 w-3.5" /></button><button aria-label="Retry" onClick={onRetry} className="rounded p-1 hover:bg-muted"><Sparkles className="h-3.5 w-3.5" /></button></>}
