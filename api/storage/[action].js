@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 const BUCKET = 'cele-pilot';
 const MAX_FILE_BYTES = 45 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'pptx', 'xlsx', 'csv', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'mp3', 'zip']);
+const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'pptx', 'xlsx', 'csv', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'mp3', 'zip']);
 
 export const config = { api: { bodyParser: false } };
 

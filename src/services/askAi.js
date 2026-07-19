@@ -26,6 +26,12 @@ const messageData = (chatId, data, userId) => withoutUndefined({
   role: data.role,
   content: data.content,
   model: data.model,
+  attachmentType: data.attachmentType,
+  attachmentName: data.attachmentName,
+  attachmentSize: data.attachmentSize,
+  attachmentStorageUrl: data.attachmentStorageUrl,
+  attachmentStoragePath: data.attachmentStoragePath,
+  mimeType: data.mimeType,
 });
 
 export const askAiStore = {
@@ -79,6 +85,26 @@ export const askAiStore = {
 
 export async function streamAskAi({ messages: history, model, signal, onChunk }) {
   const response = await fetch('/api/ask-ai', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, model }) });
+  if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || 'Ask AI could not complete the request.'); }
+  const reader = response.body?.getReader(); if (!reader) throw new Error('Streaming is unavailable in this browser.');
+  const decoder = new TextDecoder(); let buffer = ''; let output = '';
+  while (true) {
+    const { done, value } = await reader.read(); if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n'); buffer = events.pop() || '';
+    for (const event of events) for (const line of event.split('\n')) if (line.startsWith('data:')) {
+      const data = JSON.parse(line.slice(5)); if (data.error) throw new Error(data.error);
+      if (data.text) { output += data.text; onChunk(output); }
+    }
+  }
+  return output;
+}
+
+export async function streamAskAiVision({ messages: history, model, attachment, signal, onChunk }) {
+  const response = await fetch('/api/ask-ai-vision', {
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: history, model, attachment }),
+  });
   if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || 'Ask AI could not complete the request.'); }
   const reader = response.body?.getReader(); if (!reader) throw new Error('Streaming is unavailable in this browser.');
   const decoder = new TextDecoder(); let buffer = ''; let output = '';

@@ -6,6 +6,9 @@
     "api/generateIllustration.js": {
       "maxDuration": 60
     },
+    "api/ask-ai-vision.js": {
+      "maxDuration": 60
+    },
     "api/storage/[action].js": {
       "maxDuration": 60
     }
