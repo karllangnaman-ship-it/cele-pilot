@@ -27,6 +27,7 @@ import {
   mapSpreadsheetRow,
   spreadsheetValidationReasons,
 } from "@/lib/importEngine";
+import { downloadQuestionBankDocx, parseQuestionBankDocx } from "@/lib/questionBankDocx";
 
 const configs = {
   flashcard: {
@@ -378,12 +379,15 @@ export default function ImportExport({
   const config = configs[type];
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState([]);
+  const [invalidEntries, setInvalidEntries] = useState([]);
   const [status, setStatus] = useState(null);
   const inputRef = useRef(null);
+  const docxInputRef = useRef(null);
   const { toast } = useToast();
   const rowsFor = (items) =>
     items.map((item) => config.export(item, relations));
   const downloadFile = async (format, template = false) => {
+    if (format === "docx") return downloadQuestionBankDocx({ questions: template ? [] : cards, situations: relations, template });
     const rows = template ? config.sample : rowsFor(cards);
     if (format === "csv") {
       const csv = [
@@ -459,6 +463,22 @@ export default function ImportExport({
       event.target.value = "";
     }
   };
+  const selectDocx = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.docx')) return toast({ title: 'Unsupported format. Use a DOCX file.', variant: 'destructive' });
+    setStatus({ phase: 'Parsing DOCX', progress: 5 });
+    try {
+      const { entries, warnings } = await parseQuestionBankDocx(file);
+      const valid = entries.filter((entry) => !entry.reasons.length);
+      const invalid = entries.filter((entry) => entry.reasons.length);
+      setPreview(valid); setInvalidEntries(invalid);
+      setStatus({ phase: 'Validated DOCX', progress: 45, total: entries.length, skipped: invalid.length });
+      if (warnings.length) toast({ title: 'DOCX imported with warnings', description: warnings[0] });
+      if (!valid.length) toast({ title: 'No valid DOCX questions found', description: invalid[0]?.reasons.join(', '), variant: 'destructive' });
+    } catch (error) { setStatus(null); toast({ title: error.message || 'Failed to parse DOCX', variant: 'destructive' }); }
+    finally { event.target.value = ''; }
+  };
   const confirmImport = async () => {
     if (!preview.length || !user) return;
     setStatus({
@@ -504,6 +524,7 @@ export default function ImportExport({
           : "Saved directly to Firestore.",
       });
       setPreview([]);
+      setInvalidEntries([]);
       setOpen(false);
       setStatus(null);
     } catch (error) {
@@ -576,6 +597,11 @@ export default function ImportExport({
                       ))}
                     </div>
                   </section>
+                  {type === "question" && <section className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 font-medium"><FileText className="w-4 h-4" /> Question Bank DOCX Template</div>
+                    <p className="mt-2 text-xs text-muted-foreground">Word template with standalone and situational question tables. LaTeX is kept exactly as typed.</p>
+                    <Button className="mt-3" size="sm" variant="outline" onClick={() => downloadFile("docx", true)}><Download className="w-3.5 h-3.5 mr-1" /> Download DOCX Template</Button>
+                  </section>}
                   <section className="rounded-lg bg-muted/40 p-3 overflow-x-auto">
                     <p className="text-xs font-medium mb-2">Template preview</p>
                     <table className="text-xs min-w-full">
@@ -623,6 +649,11 @@ export default function ImportExport({
                       Files are read locally and are never uploaded.
                     </p>
                   </section>
+                  {type === "question" && <section>
+                    <p className="text-sm font-medium mb-2">Import DOCX</p>
+                    <Button variant="outline" onClick={() => docxInputRef.current?.click()} className="w-full"><Upload className="w-4 h-4 mr-2" /> Choose DOCX</Button>
+                    <input ref={docxInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={selectDocx} />
+                  </section>}
                 </>
               ) : (
                 <div className="space-y-3">
@@ -663,15 +694,17 @@ export default function ImportExport({
                       className="flex-1"
                       onClick={() => {
                         setPreview([]);
+                        setInvalidEntries([]);
                         setStatus(null);
                       }}
                     >
                       Cancel
                     </Button>
                     <Button className="flex-1" onClick={confirmImport}>
-                      <Check className="w-4 h-4 mr-2" /> Import {preview.length}
+                      <Check className="w-4 h-4 mr-2" /> {invalidEntries.length ? `Skip Invalid & Import ${preview.length}` : `Import All ${preview.length}`}
                     </Button>
                   </div>
+                  {invalidEntries.length > 0 && <section className="rounded border border-destructive/30 bg-destructive/5 p-3 text-xs"><p className="font-medium text-destructive">Validation report: {invalidEntries.length} skipped</p><ul className="mt-1 list-disc pl-4">{invalidEntries.map((entry) => <li key={entry.row}>Question {entry.row}: {entry.reasons.join('; ')}</li>)}</ul></section>}
                 </div>
               )}
               {status && (
@@ -704,6 +737,7 @@ export default function ImportExport({
                 >
                   <FileSpreadsheet className="w-4 h-4 mr-2" /> Export Excel
                 </Button>
+                {type === "question" && <Button variant="outline" disabled={!cards.length} onClick={() => downloadFile("docx")}><FileText className="w-4 h-4 mr-2" /> Export DOCX</Button>}
               </div>
             </TabsContent>
           </Tabs>
