@@ -29,7 +29,8 @@ function AssistantResponse({ content, pending }) {
 }
 
 function Attachment({ attachment, compact = false, onRemove, onReplace }) {
-  if (!attachment) return null;
+  const hasAttachment = Boolean(attachment?.attachmentName || attachment?.name || attachment?.attachmentUrl || attachment?.attachmentStorageUrl || attachment?.attachmentStoragePath || attachment?.url || attachment?.previewUrl);
+  if (!hasAttachment) return null;
   const image = attachment.mimeType?.startsWith('image/');
   const url = attachment.url || attachment.previewUrl || attachment.attachmentUrl || attachment.attachmentStorageUrl;
   return <div className={`mb-3 flex items-center gap-2 rounded-xl border border-border/70 bg-background/50 p-2 ${compact ? 'max-w-sm' : ''}`}>
