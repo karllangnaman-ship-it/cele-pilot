@@ -28,6 +28,7 @@ import {
   spreadsheetValidationReasons,
 } from "@/lib/importEngine";
 import { downloadQuestionBankDocx, parseQuestionBankDocx } from "@/lib/questionBankDocx";
+import MathRenderer from "@/components/MathRenderer";
 
 const configs = {
   flashcard: {
@@ -622,7 +623,7 @@ export default function ImportExport({
                                 className="pr-4 py-1 text-muted-foreground"
                                 key={column}
                               >
-                                {row[column]}
+                                <MathRenderer value={row[column]} />
                               </td>
                             ))}
                           </tr>
@@ -679,7 +680,7 @@ export default function ImportExport({
                             <tr className="border-t" key={index}>
                               {config.preview.map((column) => (
                                 <td className="p-2" key={column}>
-                                  {row[column]}
+                                  <MathRenderer value={row[column]} />
                                 </td>
                               ))}
                             </tr>
